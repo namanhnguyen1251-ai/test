@@ -129,6 +129,8 @@ Chọn **Hôm nay**, **7 ngày** hoặc **30 ngày**; mặc định là 30 ngày
 
 Tool gửi các kỳ chính thức của API bằng `date_preset=today`, `last_7d`, `last_30d`. Khung ngày thống kê do Meta xác định, có thể khác múi giờ dùng để hẹn giờ đăng bài trên máy bạn. Dữ liệu Insights có độ trễ; Hôm nay có thể chưa có dữ liệu hoặc chưa đủ cả ngày. Xem dấu thời gian cập nhật và số ngày có dữ liệu khi đọc kết quả.
 
+Meta có thể trả thêm liên kết chuyển sang khoảng ngày tiếp theo dù kỳ hiện tại đã đủ dữ liệu. Tool bỏ qua liên kết thời gian đó để giữ kỳ đã chọn. Với phân trang bằng cursor, tool dựng lại yêu cầu theo Page, phiên bản API và kỳ ban đầu; không dùng token hoặc URL trong liên kết trả về. Lượt xem nội dung không phải Reach (số người tiếp cận duy nhất).
+
 Metric có thể bị giới hạn quyền, không được hỗ trợ trên Graph version của app hoặc thay đổi theo quy định Meta. Những tên metric trên là các yêu cầu được tool thử đọc, chưa phải cam kết chúng hoạt động với mọi Page/version. Khi thiếu dữ liệu hoặc gặp lỗi, ô hiển thị **`—`**, kèm thông tin khả dụng; chỉ hiển thị **0** khi Meta thực sự trả về số 0. Tool không dùng lượt thích `fan_count`, impressions hay video views để thay những cột này.
 
 Các tổng chỉ gồm Page có dữ liệu và ghi mức bao phủ Page/ngày, để bạn nhận ra báo cáo chưa đủ. Một metric lỗi không làm mất kết quả khác của Page, và lỗi một Page không làm dừng toàn bộ báo cáo.

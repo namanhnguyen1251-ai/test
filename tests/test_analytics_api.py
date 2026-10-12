@@ -8,7 +8,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, build_opener, ProxyHandler
 
 from app import State, make_server
-from meta_client import GraphError
+from meta_client import GraphClient, GraphError
 
 
 class AnalyticsMetaClient:
@@ -18,6 +18,7 @@ class AnalyticsMetaClient:
         self.user_token = token
         self.graph_version = version
         self.calls = []
+        self.temporal_navigation = False
 
     def list_pages(self):
         return [{"id": "123", "name": "Trang đăng bài", "access_token": "private-page-one", "tasks": ["CREATE_CONTENT"]},
@@ -26,16 +27,23 @@ class AnalyticsMetaClient:
     def _page_auth(self, page):
         return page["id"], page["access_token"]
 
+    def _trusted_url(self, url, host):
+        return GraphClient._trusted_url(url, host)
+
     def _request(self, method, path, token, params=None, **kwargs):
         self.calls.append((method, path, params))
         if path in {"123", "456"}:
             return {"followers_count": 10 if path == "123" else 0}
-        if path == "456/insights" and params["metric"] == "page_media_view":
+        if path == "456/insights" and params["metric"] == "page_media_view" and not self.temporal_navigation:
             raise GraphError("private-page-two must not leak", code=100)
         days = {"today": 1, "last_7d": 7, "last_30d": 30}[params["date_preset"]]
         end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        return {"data": [{"name": params["metric"], "period": "day", "values": [
+        payload = {"data": [{"name": params["metric"], "period": "day", "values": [
             {"value": 1, "end_time": (end - timedelta(days=index)).isoformat()} for index in range(days)]}]}
+        if self.temporal_navigation:
+            page_id = path.split('/')[0]
+            payload['paging'] = {'next': f'https://graph.facebook.com/v25.0/{page_id}/insights/{params["metric"]}?since=9999999999&until=99999999999&access_token=private-page-one'}
+        return payload
 
 
 class AnalyticsAPITests(unittest.TestCase):
@@ -107,6 +115,21 @@ class AnalyticsAPITests(unittest.TestCase):
             self.assertEqual(report["rows"][0]["engagements"], days)
             self.assertEqual(report["rows"][0]["followers"], 10)
             self.assertEqual(report["rows"][0]["metrics"]["followers"]["scope"], "current")
+
+    def test_canonical_date_navigation_does_not_make_complete_reports_partial(self):
+        self.state.client.temporal_navigation = True
+        for preset, days in [('today', 1), ('7days', 7), ('30days', 30)]:
+            report = self.refresh(preset)
+            self.assertEqual(report['state'], 'completed')
+            self.assertEqual(report['completed_pages'], 2)
+            self.assertTrue(all(row['status'] == 'ok' and not row['issues'] for row in report['rows']))
+            self.assertEqual(report['summary']['views']['status'], 'ok')
+            self.assertEqual(report['summary']['views']['value'], 2 * days)
+            self.assertEqual(report['summary']['followers']['value'], 10)
+            for row in report['rows']:
+                self.assertEqual(row['metrics']['views']['data_points'], days)
+            self.assertNotIn('private-page-one', json.dumps(report))
+            self.assertNotIn('9999999999', json.dumps(report))
 
     def test_refresh_needs_csrf_and_foreign_origin_is_blocked(self):
         for headers in [{"X-CSRF-Token": "wrong"}, {"Origin": "https://other.example"}]:

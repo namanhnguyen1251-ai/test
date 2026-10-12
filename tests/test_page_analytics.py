@@ -249,6 +249,25 @@ class PageAnalyticsTests(unittest.TestCase):
         reads = [call for call in client.calls if call["params"].get("metric") == "page_media_view"]
         self.assertEqual(reads[1]["params"], {"metric": "page_media_view", "period": "day", "date_preset": "last_7d", "after": "second"})
 
+    def test_cursor_links_are_rebuilt_for_configured_page_version_metric_and_range(self):
+        for path in (
+            '/v25.0/123/insights', '/123/insights', '/v24.0/123/insights/',
+            '/v25.0/123/insights/page_media_view', '/123/insights/page_media_view/',
+        ):
+            with self.subTest(path=path):
+                first = series('page_media_view', (10,))
+                first['paging'] = {'next': 'https://graph.facebook.com' + path + '?after=second&access_token=private-page-token&date_preset=last_30d&since=1'}
+                responses = [first, series('page_media_view', (10, 20))]
+                client = Client(lambda path, params: responses.pop(0) if params.get('metric') == 'page_media_view' else None)
+                row = self.fetch(client)
+                self.assertEqual(row['metrics']['views']['status'], 'ok')
+                self.assertEqual(row['views'], 30)
+                reads = [call for call in client.calls if call['params'].get('metric') == 'page_media_view']
+                self.assertEqual(len(reads), 2)
+                self.assertEqual(reads[1]['path'], '123/insights')
+                self.assertEqual(reads[1]['params'], {'metric': 'page_media_view', 'period': 'day', 'since': SINCE, 'until': SINCE + 2 * DAY, 'after': 'second'})
+                self.assert_safe(row)
+
     def test_conflicting_duplicate_bucket_is_excluded_not_chosen_arbitrarily(self):
         first = series("page_media_view", (10,))
         first["paging"] = {"next": "https://graph.facebook.com/v24.0/123/insights?after=second"}
@@ -267,12 +286,14 @@ class PageAnalyticsTests(unittest.TestCase):
         self.assertIsNone(row["views"])
         self.assertEqual(row["metrics"]["views"]["status"], "unavailable")
 
-    def test_pagination_rejects_other_hosts_versions_edges_and_credentials(self):
+    def test_pagination_rejects_other_hosts_pages_edges_metrics_and_credentials(self):
         for url in (
             "https://attacker.example/v24.0/123/insights?after=x&access_token=private-page-token",
-            "https://graph.facebook.com/v23.0/123/insights?after=x",
             "https://graph.facebook.com/v24.0/456/insights?after=x",
             "https://graph.facebook.com/v24.0/123/feed?after=x",
+            "https://graph.facebook.com/v24.0/123/insights/page_post_engagements?after=x",
+            "https://graph.facebook.com/v24.0/123/insights/extra/path?after=x",
+            "https://graph.facebook.com/v25.1/123/insights?after=x",
             "http://graph.facebook.com/v24.0/123/insights?after=x",
             "https://graph.facebook.com@attacker.example/v24.0/123/insights?after=x",
         ):
@@ -284,6 +305,18 @@ class PageAnalyticsTests(unittest.TestCase):
                 self.assertEqual(row["views"], 10)
                 self.assertEqual(row["metrics"]["views"]["status"], "partial")
                 self.assertEqual(sum(call["params"].get("metric") == "page_media_view" for call in client.calls), 1)
+                self.assert_safe(row)
+
+    def test_blank_duplicate_and_repeated_query_cursors_are_not_followed(self):
+        for query in ('after=', 'after=x&after=', 'after=x&after=y', 'after=x&after=x', 'after=x%0Ay', 'after=%00', 'after=x%7Fy'):
+            with self.subTest(query=query):
+                first = series('page_media_view')
+                first['paging'] = {'next': 'https://graph.facebook.com/v24.0/123/insights?' + query}
+                client = Client(lambda path, params: first if params.get('metric') == 'page_media_view' else None)
+                row = self.fetch(client)
+                self.assertEqual(row['views'], 30)
+                self.assertEqual(row['metrics']['views']['status'], 'partial')
+                self.assertEqual(sum(call['params'].get('metric') == 'page_media_view' for call in client.calls), 1)
                 self.assert_safe(row)
 
     def test_pagination_detects_repeating_cursor(self):
@@ -303,6 +336,49 @@ class PageAnalyticsTests(unittest.TestCase):
         self.assertEqual(row["views"], 30)
         self.assertEqual(row["metrics"]["views"]["status"], "ok")
         self.assertEqual(sum(call["params"].get("metric") == "page_media_view" for call in client.calls), 1)
+
+    def test_complete_thirty_day_report_ignores_canonical_temporal_navigation(self):
+        for prefix in ('/v25.0/123/insights/', '/123/insights/'):
+            with self.subTest(prefix=prefix):
+                def handler(path, params):
+                    if path == '123':
+                        return {'followers_count': 3}
+                    source = params['metric']
+                    payload = series(source, tuple(range(30)))
+                    payload['paging'] = {'next': 'https://graph.facebook.com' + prefix + source + '?access_token=private-page-token&since=9999999999&until=99999999999'}
+                    return payload
+                client = Client(handler)
+                row = fetch_page_analytics(client, PAGE, SINCE, SINCE + 30 * DAY, range_days=30, date_preset='last_30d')
+                self.assertEqual(row['status'], 'ok')
+                self.assertEqual(row['issues'], [])
+                self.assertEqual(len(client.calls), 4)
+                for key in ('views', 'engagements', 'new_followers'):
+                    self.assertEqual(row[key], sum(range(30)))
+                    self.assertEqual(row['metrics'][key]['data_points'], 30)
+                    self.assertEqual(row['metrics'][key]['status'], 'ok')
+                for call in client.calls[1:]:
+                    self.assertEqual(call['path'], '123/insights')
+                    self.assertEqual(call['params']['date_preset'], 'last_30d')
+                    self.assertNotIn('since', call['params'])
+                    self.assertNotIn('until', call['params'])
+                self.assert_safe(row)
+
+    def test_ignored_temporal_link_still_checks_https_and_meta_host(self):
+        for url in (
+            'https://attacker.example/v24.0/123/insights?since=1&access_token=private-page-token',
+            'http://graph.facebook.com/v24.0/123/insights?since=1',
+            'https://graph.facebook.com@attacker.example/v24.0/123/insights?since=1',
+            'https://graph.facebook.com:444/v24.0/123/insights?since=1',
+            'https://graph.facebook.com/v24.0/123/insights?since=1#fragment',
+        ):
+            with self.subTest(url=url):
+                payload = series('page_media_view')
+                payload['paging'] = {'next': url}
+                client = Client(lambda path, params: payload if params.get('metric') == 'page_media_view' else None)
+                row = self.fetch(client)
+                self.assertEqual(row['metrics']['views']['status'], 'partial')
+                self.assertEqual(sum(call['params'].get('metric') == 'page_media_view' for call in client.calls), 1)
+                self.assert_safe(row)
 
     def test_api_bucket_end_time_is_not_trimmed_using_local_midnight(self):
         row = self.fetch(Client())

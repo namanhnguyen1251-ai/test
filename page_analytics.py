@@ -8,6 +8,7 @@ by impressions, video-only views, Page likes, or a fabricated zero.
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qs
@@ -173,15 +174,22 @@ def _daily_metric(client, page_id, token, key, since, until, expected_days, date
             break
         try:
             parts = client._trusted_url(next_url, client.GRAPH_HOST)
-            if parts.path != f"/{client.graph_version}/{page_id}/insights":
-                raise GraphError("Đường dẫn phân trang không hợp lệ.")
-            query = parse_qs(parts.query)
+            query = parse_qs(parts.query, keep_blank_values=True)
             cursors = query.get("after", [])
             if not cursors:
                 # Insights also exposes temporal next links. Following their
                 # since/until would leave the requested range/native preset.
+                # Their path is unused: do not flag a complete report just
+                # because Meta canonicalized a date-navigation link.
                 break
-            if len(cursors) != 1 or not cursors[0] or cursors[0] in seen_cursors:
+            # Only the cursor is copied; requests always use the original
+            # configured version, Page, metric and range. A returned version
+            # or metric-specific edge must never replace those parameters.
+            path_pattern = rf"/(?:v[1-9][0-9]?\.0/)?{re.escape(page_id)}/insights(?:/{re.escape(source)})?/?"
+            if not re.fullmatch(path_pattern, parts.path):
+                raise GraphError("Đường dẫn phân trang không hợp lệ.")
+            if (len(cursors) != 1 or not cursors[0] or cursors[0] in seen_cursors
+                    or any(ord(char) < 32 or ord(char) == 127 for char in cursors[0])):
                 raise GraphError("Con trỏ phân trang không hợp lệ.")
             seen_cursors.add(cursors[0])
             params["after"] = cursors[0]
