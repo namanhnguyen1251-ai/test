@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>PagePilot · Quản lý đăng bài Fanpage</title>
+  <link rel="stylesheet" href="/app.css?v=1">
+  <script src="/app.js?v=1" defer></script>
+</head>
+<body>
+  <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-stack" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="m10 13 4-4M8 16l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 1 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(1 1)"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 6h16M12 6v14M8 20h8M4 6v3M20 6v3"/></symbol>
+    <symbol id="i-photo" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="3"/><path d="m16 9 5-3v12l-5-3"/></symbol>
+    <symbol id="i-reel" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M7 3l4 6m3-6 4 6m-8 3 5 3-5 3v-6Z"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7V5Z"/></symbol>
+    <symbol id="i-page" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h4"/></symbol>
+  </svg>
+
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="PagePilot — trang chủ">
+      <span class="brand-mark"><svg><use href="#i-stack"/></svg></span>
+      <span>Page<span class="brand-light">Pilot</span><small>KHÔNG GIAN ĐĂNG BÀI</small></span>
+    </a>
+    <div class="header-actions">
+      <span class="local-label"><span class="status-dot"></span> Chạy trên máy của bạn</span>
+      <span id="sessionBadge" class="badge neutral">Chưa kết nối</span>
+      <button id="demoButton" class="button button-ghost"><svg><use href="#i-play"/></svg>Dùng thử 50 Fanpage</button>
+      <button id="connectButton" class="button button-primary"><svg><use href="#i-link"/></svg>Kết nối Meta App</button>
+      <button id="disconnectButton" class="button button-ghost" hidden>Ngắt kết nối</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <div class="workspace-heading">
+      <div><div class="eyebrow">BẢNG ĐIỀU KHIỂN</div><h1>Một bài viết. Nhiều Fanpage.</h1><p>Chọn trang, chuẩn bị nội dung và theo dõi từng lượt đăng.</p></div>
+      <div class="workspace-counter"><span id="totalPages">00</span><div>Fanpage<small>trong phiên làm việc</small></div></div>
+    </div>
+    <div id="demoNotice" class="notice notice-demo" hidden><svg><use href="#i-shield"/></svg><p><strong>Bạn đang ở chế độ dùng thử.</strong> 50 Fanpage mẫu để trải nghiệm. Mọi lượt đăng đều là mô phỏng, không gửi lên Facebook.</p><button id="demoConnectButton" class="button button-ghost button-small">Kết nối tài khoản thật <svg aria-hidden="true"><use href="#i-arrow"/></svg></button></div>
+    <div id="globalError" class="notice notice-error" role="alert" hidden></div>
+
+    <div class="workspace-grid">
+      <section class="panel pages-panel" aria-labelledby="pagesHeading">
+        <div class="panel-heading"><div class="heading-icon"><svg><use href="#i-stack"/></svg><h2 id="pagesHeading">Fanpage của bạn</h2></div><span id="pageCount" class="number-pill">0</span></div>
+        <label class="search-box"><svg><use href="#i-search"/></svg><input id="pageSearch" type="search" placeholder="Tìm tên hoặc ID trang…" aria-label="Tìm Fanpage"></label>
+        <div class="selection-toolbar"><label class="check-label"><input id="selectAll" type="checkbox"><span>Chọn tất cả kết quả</span></label><span id="selectedCount">0 đã chọn</span></div>
+        <div id="pageList" class="page-list"></div>
+        <div class="pages-footer"><svg><use href="#i-shield"/></svg><span>Chỉ hiển thị trang được tài khoản cấp quyền truy cập.</span></div>
+      </section>
+
+      <section class="panel composer-panel" aria-labelledby="composeHeading">
+        <div class="panel-heading"><div class="heading-icon"><span class="step-label">02</span><h2 id="composeHeading">Soạn nội dung</h2></div><span class="quiet-label">Bản nháp trên máy</span></div>
+        <div class="composer-body">
+          <div class="field-label">Loại bài đăng</div>
+          <div class="type-selector" role="group" aria-label="Loại bài đăng">
+            <button class="type-button active" data-kind="text" aria-pressed="true"><svg><use href="#i-text"/></svg>Văn bản</button>
+            <button class="type-button" data-kind="photos" aria-pressed="false"><svg><use href="#i-photo"/></svg>Ảnh</button>
+            <button class="type-button" data-kind="video" aria-pressed="false"><svg><use href="#i-video"/></svg>Video</button>
+            <button class="type-button" data-kind="reel" aria-pressed="false"><svg><use href="#i-reel"/></svg>Reels</button>
+          </div>
+          <div id="videoTitleField" class="form-field" hidden><label class="field-label" for="videoTitle">Tiêu đề video <span class="optional">· tùy chọn</span></label><input id="videoTitle" type="text" maxlength="255" placeholder="Đặt tên cho video của bạn"></div>
+          <div class="form-field message-field"><label class="field-label" for="postMessage">Nội dung bài viết <span id="messageRequirement" class="optional">· bắt buộc</span></label><textarea id="postMessage" rows="7" placeholder="Bạn muốn chia sẻ điều gì với người theo dõi?" maxlength="63206"></textarea><div class="textarea-footer"><span>Nội dung này sẽ được dùng cho tất cả trang đã chọn.</span><span id="characterCount">0 ký tự</span></div></div>
+          <div id="mediaField" class="form-field" hidden>
+            <div class="field-label media-heading"><span>Tệp đính kèm</span><span id="mediaCount" class="optional">0 tệp</span></div>
+            <label id="uploadDropzone" class="upload-dropzone" for="mediaInput"><span class="upload-icon"><svg><use href="#i-upload"/></svg></span><strong id="uploadLabel">Chọn ảnh từ máy tính</strong><span id="uploadHint">JPEG, PNG · tối đa 10 ảnh · 20 MB/ảnh</span><input id="mediaInput" type="file" accept="image/jpeg,image/png" multiple class="visually-hidden"></label>
+            <div id="uploadStatus" class="field-help" aria-live="polite"></div><div id="mediaList" class="media-list"></div>
+          </div>
+          <div class="preview-heading"><span class="field-label">Xem trước nội dung</span><span class="quiet-label">Giao diện thực tế có thể khác</span></div>
+          <div class="post-preview"><div class="preview-author"><span id="previewAvatar" class="page-avatar">P</span><div><strong id="previewName">Fanpage đã chọn</strong><small>Vừa xong <span aria-hidden="true">· 🌐</span></small></div><span class="preview-dots" aria-hidden="true">···</span></div><p id="previewMessage" class="preview-message placeholder-text">Nội dung của bạn sẽ xuất hiện ở đây…</p><div id="previewMedia" class="preview-media" hidden></div><div class="preview-reactions"><span>Thích</span><span>Bình luận</span><span>Chia sẻ</span></div></div>
+        </div>
+      </section>
+
+      <aside class="summary-column">
+        <section class="panel summary-panel" aria-labelledby="summaryHeading"><div class="panel-heading"><div class="heading-icon"><span class="step-label">03</span><h2 id="summaryHeading">Sẵn sàng đăng</h2></div></div><div class="summary-body"><div class="selected-stat"><span id="summarySelected">0</span><div>Fanpage đã chọn<small>Cùng một nội dung</small></div></div><div class="summary-line"><span>Loại bài</span><strong id="summaryKind">Văn bản</strong></div><div class="summary-line"><span>Tệp đính kèm</span><strong id="summaryMedia">—</strong></div><label class="delay-field" for="delaySeconds"><span>Khoảng nghỉ giữa các trang</span><div><input id="delaySeconds" type="number" value="3" min="1" max="60" step="1"><span>giây</span></div></label><p class="field-help">Đăng lần lượt. Thời gian xử lý còn phụ thuộc vào Meta và dung lượng tệp.</p><button id="reviewButton" class="button button-primary button-full" disabled>Xem lại & đăng bài <svg><use href="#i-arrow"/></svg></button><p id="readyHint" class="ready-hint">Kết nối Meta App hoặc dùng thử để bắt đầu.</p></div><div class="summary-footer"><svg><use href="#i-shield"/></svg><p>Token chỉ dùng trong phiên chạy hiện tại. Không lưu vào trình duyệt.</p></div></section>
+        <section class="tip-card"><span class="tip-icon"><svg><use href="#i-clock"/></svg></span><div><strong>Mọi trang đều có kết quả riêng</strong><p>Theo dõi trạng thái, lỗi và ID bài đăng ngay trong phiên làm việc.</p></div></section>
+        <section class="history-card"><div class="history-heading"><h2>Gần đây</h2><span class="quiet-label">Lưu trên máy</span></div><div id="historyList" class="history-list"><p class="empty-history">Chưa có lượt đăng nào.</p></div></section>
+      </aside>
+
+      <section id="jobPanel" class="panel job-panel" aria-labelledby="jobHeading" hidden><div class="panel-heading"><div class="heading-icon"><svg><use href="#i-clock"/></svg><h2 id="jobHeading">Tiến trình đăng bài</h2><span id="jobStateBadge" class="badge neutral"></span></div><div class="job-actions"><button id="currentJobButton" class="button button-ghost button-small" hidden>Tiến trình hiện tại</button><button id="exportButton" class="button button-ghost button-small"><svg><use href="#i-download"/></svg>Xuất CSV</button><button id="stopButton" class="button button-danger button-small" hidden>Dừng hàng đợi</button></div></div><div class="job-body"><div class="job-summary" role="status" aria-live="polite" aria-atomic="true"><strong id="jobProgressText">0 / 0 trang</strong><span id="jobSummaryText"></span></div><div class="progress-track" role="progressbar" id="jobProgress" aria-label="Tiến độ đăng bài" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="jobProgressFill"></div></div><p id="jobNote" class="field-help"></p><div class="result-table-wrap"><table class="result-table"><thead><tr><th>Fanpage</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead><tbody id="jobResults"></tbody></table></div></div></section>
+    </div>
+    <footer class="workspace-footer"><span>PagePilot <span class="footer-divider">/</span> Công cụ đăng bài qua Meta Graph API</span><span id="connectionDetail">Chưa kết nối</span></footer>
+  </main>
+
+  <dialog id="connectDialog" class="modal"><form id="connectForm" method="dialog"><div class="modal-heading"><span class="modal-icon"><svg><use href="#i-link"/></svg></span><button type="button" class="icon-button modal-close" data-close="connectDialog" aria-label="Đóng"><svg><use href="#i-x"/></svg></button></div><h2>Kết nối Meta App</h2><p class="modal-description">Dùng User Access Token của App đã được cấp quyền quản lý và đăng bài trên các Fanpage.</p><div class="form-field"><label class="field-label" for="accessToken">User Access Token</label><input id="accessToken" type="password" autocomplete="off" spellcheck="false" placeholder="Dán token vào đây" required><p class="field-help">Không chia sẻ token. Token không được lưu vào trình duyệt.</p></div><div class="form-field"><label class="field-label" for="graphVersion">Phiên bản Graph API</label><input id="graphVersion" type="text" placeholder="vXX.0" pattern="v[0-9]+\.0" required autocomplete="off"><p class="field-help">Nhập phiên bản API đang dùng trong Meta App của bạn.</p></div><div id="connectError" class="inline-error" role="alert" hidden></div><div class="modal-actions"><button type="button" class="button button-ghost" data-close="connectDialog">Để sau</button><button id="connectSubmit" type="submit" class="button button-primary">Kết nối & lấy Fanpage <svg><use href="#i-arrow"/></svg></button></div></form></dialog>
+
+  <dialog id="reviewDialog" class="modal review-modal"><div class="modal-heading"><span class="modal-icon"><svg><use href="#i-check"/></svg></span><button type="button" class="icon-button modal-close" data-close="reviewDialog" aria-label="Đóng"><svg><use href="#i-x"/></svg></button></div><h2 id="reviewHeading">Xác nhận đăng bài</h2><p id="reviewDescription" class="modal-description"></p><div class="review-details"><div class="summary-line"><span>Loại bài</span><strong id="reviewKind"></strong></div><div class="summary-line"><span>Tệp đính kèm</span><strong id="reviewMedia"></strong></div><div class="summary-line"><span>Khoảng nghỉ</span><strong id="reviewDelay"></strong></div></div><p id="reviewMessage" class="review-message"></p><div id="reviewPages" class="review-pages"></div><p id="reviewCaution" class="field-help"></p><div id="reviewError" class="inline-error" role="alert" hidden></div><div class="modal-actions"><button class="button button-ghost" data-close="reviewDialog">Quay lại chỉnh sửa</button><button id="confirmPublish" class="button button-primary">Xác nhận đăng</button></div></dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
