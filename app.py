@@ -65,6 +65,8 @@ class State:
         self.lock = threading.RLock()
         self.api_lock = threading.RLock()
         self.monitor = None
+        self.analytics = None
+        self.session_revision = 0
         self.client_factory = client_factory
         self.csrf = secrets.token_urlsafe(32)
         self.client = None
@@ -117,6 +119,18 @@ class State:
         if self.monitor is None:
             self.monitor = CommentMonitor(self)
             self.monitor.start()
+
+    def get_analytics(self):
+        with self.lock:
+            if self.analytics is None:
+                from analytics_service import AnalyticsService
+                self.analytics = AnalyticsService(self)
+            return self.analytics
+
+    def session_changed(self):
+        self.session_revision += 1
+        if self.analytics is not None:
+            self.analytics.invalidate()
 
     def public_pages(self):
         return [self.public_page(p) for p in self.pages]
@@ -210,7 +224,8 @@ class State:
         with self.lock:
             return {"csrf_token": self.csrf, "connected": bool(self.pages), "demo": self.demo,
                     "graph_version": self.graph_version, "pages": self.public_pages(),
-                    "job": copy.deepcopy(self.job), "media": self.public_media(), "history": self.history()}
+                    "job": copy.deepcopy(self.job), "media": self.public_media(), "history": self.history(),
+                    "session_revision": self.session_revision}
 
     def connect(self, token, version):
         if not isinstance(token, str) or not 10 <= len(token) <= 8192 or re.search(r"\s", token):
@@ -228,6 +243,7 @@ class State:
             with self.lock:
                 self.client, self.pages = client, pages
                 self.demo, self.graph_version = False, version
+                self.session_changed()
             return {"pages": self.public_pages(), "demo": False}
         finally:
             with self.lock:
@@ -242,6 +258,7 @@ class State:
             self.graph_version = "demo"
             self.pages = [{"id": str(100000 + i), "name": f"Fanpage thử nghiệm {i:02d}",
                            "access_token": "demo-only", "tasks": ["CREATE_CONTENT"]} for i in range(1, 51)]
+            self.session_changed()
             return {"pages": self.public_pages(), "demo": True}
 
     def disconnect(self):
@@ -252,6 +269,7 @@ class State:
             self.pages = []
             self.demo = False
             self.graph_version = ""
+            self.session_changed()
             return {"connected": False}
 
     def begin_job(self, data):
@@ -417,6 +435,8 @@ class State:
     def close(self):
         self.shutdown.set()
         self.stop.set()
+        if self.analytics is not None:
+            self.analytics.close()
         if self.monitor is not None:
             self.monitor.stop()
         if self.worker:
@@ -484,9 +504,12 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(200, {"history": self.state.history()})
         elif path == "/api/plans":
             self.respond(200, {"jobs": self.state.plans()})
-        elif path in {"/", "/app.css", "/app.js"}:
+        elif path == "/api/analytics":
+            self.respond(200, self.state.get_analytics().snapshot())
+        elif path in {"/", "/app.css", "/app.js", "/analytics.js"}:
             filename, mime = {"/": ("index.html", "text/html; charset=utf-8"), "/app.css": ("app.css", "text/css; charset=utf-8"),
-                              "/app.js": ("app.js", "text/javascript; charset=utf-8")}[path]
+                              "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                              "/analytics.js": ("analytics.js", "text/javascript; charset=utf-8")}[path]
             self.respond(200, (ROOT / "static" / filename).read_bytes(), mime)
         elif path == "/favicon.ico":
             self.respond(204, b"", "image/x-icon")
@@ -530,6 +553,10 @@ class Handler(BaseHTTPRequestHandler):
                 result = {"stopping": True}
             elif path == "/api/comments/cancel":
                 result = self.state.cancel_comment(data.get("job_id"), data.get("result_index"))
+            elif path == "/api/analytics/refresh":
+                result = self.state.get_analytics().refresh(data.get("preset", "30days"))
+            elif path == "/api/analytics/stop":
+                result = self.state.get_analytics().stop()
             else:
                 self.respond(404, {"error": "Không tìm thấy."})
                 return

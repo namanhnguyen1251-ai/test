@@ -9,6 +9,7 @@
 - Đăng văn bản; bài có ảnh JPEG/PNG; video MP4; Facebook Reels từ file MP4 trên máy.
 - Chuẩn bị nhiều bài riêng biệt và gửi lịch đăng lên Meta; Meta xử lý lịch đã nhận dù máy tính của bạn tắt.
 - Tùy chọn bình luận dưới bài bằng chính Fanpage sau khi xác nhận bài đã xuất bản; tính năng bình luận cần ứng dụng đang chạy.
+- Bảng thống kê toàn bộ Fanpage trong phiên: lượt xem, tương tác, follower hiện tại và lượt follow mới; xem Hôm nay, 7 ngày hoặc 30 ngày.
 - Xử lý lần lượt, theo dõi kết quả riêng cho từng Page và dừng các mục chưa bắt đầu.
 - Chế độ demo có 50 Page giả để thử giao diện, không gửi bài lên Meta.
 - Lưu lịch sử công việc trên máy; token chỉ nằm trong bộ nhớ trong thời gian ứng dụng chạy.
@@ -63,12 +64,15 @@ Những quyền cần kiểm tra cho quy trình đăng Page:
 - `pages_read_engagement`: đọc dữ liệu Page cần cho các thao tác Page API.
 - `pages_manage_posts`: tạo bài đăng trên Page.
 - `pages_manage_engagement`: tạo bình luận bằng Fanpage, nếu bật tính năng bình luận sau đăng.
+- `read_insights`: đọc thống kê Page, cùng `pages_read_engagement` và quyền phân tích Page của người dùng.
 
 Người dùng phải có quyền tạo nội dung tương ứng trên từng Page trong Facebook/Business Portfolio. Kiểm tra cả quyền được cấp cho người dùng, Page được chọn khi cấp quyền app và các task mà `/me/accounts` trả về, chẳng hạn `CREATE_CONTENT` hoặc quyền quản lý phù hợp theo mô hình Page hiện tại. Chỉ có tên Page xuất hiện trong một danh sách quản lý Business chưa đủ để chứng minh được phép đăng.
 
 Chế độ Development, vai trò app và mức truy cập quyền có thể giới hạn những tài khoản được sử dụng. Khi cung cấp app cho người dùng ngoài nhóm có vai trò trong app, Meta có thể yêu cầu Live mode, Advanced Access/App Review và Business Verification, tùy loại app, use case và quyền được xin. Xem yêu cầu thực tế trong App Dashboard; tool không tự cấp quyền và không thay thế quy trình xét duyệt.
 
 Token có thể hết hạn hoặc bị thu hồi. Khi gặp lỗi quyền hoặc token, cấp lại token trong app của bạn rồi kết nối lại. Nếu app bật yêu cầu `appsecret_proof`, cần kiểm tra khả năng tương thích riêng; đừng tắt một yêu cầu bảo mật của app chỉ để thử đăng bài.
+
+Nếu token cũ chưa được cấp `read_insights`, bạn cần cấp quyền đó qua Meta App rồi lấy token mới và kết nối lại. Việc bật một quyền trong App Dashboard chưa tự thêm quyền vào token đã phát hành.
 
 ## Cách dùng
 
@@ -108,11 +112,34 @@ Nút dừng ngăn các mục tiếp theo bắt đầu; yêu cầu đang gửi c�
 
 Ứng dụng không tự thử lại các yêu cầu đăng, vì lỗi mạng sau khi gửi có thể xảy ra dù Meta đã nhận bài. Nếu kết quả không rõ, kiểm tra trực tiếp trên Page và bằng ID trả về trước khi chọn đăng lại; việc gửi lại có thể tạo bài trùng. Nếu tải nhiều ảnh thành công nhưng tạo bài cuối cùng thất bại, ảnh chưa xuất bản có thể còn trên Meta.
 
+## Thống kê toàn bộ Fanpage
+
+Bảng thống kê dùng **tất cả Page đã tải trong phiên**, độc lập với các ô chọn Page để đăng bài. Page có quyền phân tích vẫn có thể được đọc thống kê dù không có quyền tạo bài.
+
+Chọn **Hôm nay**, **7 ngày** hoặc **30 ngày**; mặc định là 30 ngày. Nhấn cập nhật để đọc dữ liệu từ Meta, theo dõi tiến độ từng Page hoặc dừng phần chưa bắt đầu. Thống kê chỉ gọi API GET bằng Page Access Token trong RAM, không đăng hoặc sửa nội dung.
+
+| Cột | Ý nghĩa | Trường/metric được yêu cầu |
+| --- | --- | --- |
+| Lượt xem | Số lượt xem nội dung trong kỳ mà Meta trả về | `page_media_view` |
+| Tương tác | Số tương tác với bài trong kỳ mà Meta trả về | `page_post_engagements` |
+| Follower hiện tại | Tổng follower hiện có của Page tại lần cập nhật | `followers_count` |
+| Follow mới | Số lượt follow phát sinh trong kỳ, trước khi trừ unfollow | `page_daily_follows` |
+
+**Follower hiện tại là số tại thời điểm cập nhật**, nên không chuyển thành số follower lịch sử khi bạn đổi kỳ. Follow mới là số sự kiện follow trong kỳ; không biểu thị mức tăng ròng hoặc phần trăm tăng trưởng. Tổng trong dashboard cộng các dòng Page có dữ liệu; một người theo dõi nhiều Page có thể đóng góp vào nhiều dòng.
+
+Tool gửi các kỳ chính thức của API bằng `date_preset=today`, `last_7d`, `last_30d`. Khung ngày thống kê do Meta xác định, có thể khác múi giờ dùng để hẹn giờ đăng bài trên máy bạn. Dữ liệu Insights có độ trễ; Hôm nay có thể chưa có dữ liệu hoặc chưa đủ cả ngày. Xem dấu thời gian cập nhật và số ngày có dữ liệu khi đọc kết quả.
+
+Metric có thể bị giới hạn quyền, không được hỗ trợ trên Graph version của app hoặc thay đổi theo quy định Meta. Những tên metric trên là các yêu cầu được tool thử đọc, chưa phải cam kết chúng hoạt động với mọi Page/version. Khi thiếu dữ liệu hoặc gặp lỗi, ô hiển thị **`—`**, kèm thông tin khả dụng; chỉ hiển thị **0** khi Meta thực sự trả về số 0. Tool không dùng lượt thích `fan_count`, impressions hay video views để thay những cột này.
+
+Các tổng chỉ gồm Page có dữ liệu và ghi mức bao phủ Page/ngày, để bạn nhận ra báo cáo chưa đủ. Một metric lỗi không làm mất kết quả khác của Page, và lỗi một Page không làm dừng toàn bộ báo cáo.
+
+Bản thống kê cuối được lưu cục bộ trong SQLite. Sau khi mở lại ứng dụng, dữ liệu cũ được đánh dấu là **bản lưu**, kèm thời gian cập nhật; cần token hợp lệ và bấm cập nhật để lấy dữ liệu mới. Chuyển tài khoản hoặc đổi giữa demo/tài khoản thật sẽ hủy lượt đọc trước và xóa báo cáo đang hiển thị. Có thể xuất CSV gồm kỳ, nguồn dữ liệu, thời gian cập nhật và nhãn demo. Demo sử dụng số liệu giả lập.
+
 ## Dữ liệu cục bộ
 
 Máy chủ chỉ lắng nghe trên loopback, để trình duyệt trên cùng máy kết nối. Token người dùng và token Page giữ trong RAM, không ghi vào cơ sở dữ liệu hay lịch sử; được xóa khi ngắt kết nối hoặc thoát máy chủ. Đây vẫn là thông tin nhạy cảm trong phiên đang chạy, nên chỉ nhập vào ứng dụng cục bộ trên máy bạn kiểm soát.
 
-Trên Windows, lịch sử được lưu tại `%LOCALAPPDATA%\PagePilot\history.sqlite3`; trên macOS/Linux, mặc định là `~/.local/share/PagePilot/history.sqlite3` hoặc thư mục theo `XDG_DATA_HOME`. Ứng dụng in đường dẫn đang dùng khi khởi động. Lịch sử chứa nội dung và kết quả công việc, vì vậy vẫn có thể chứa thông tin riêng của bạn dù không chứa token. Có thể xuất kết quả từng công việc ra CSV trong giao diện. Media được lưu tạm phục vụ phiên tải lên, không được dùng làm kho media lâu dài.
+Trên Windows, lịch sử được lưu tại `%LOCALAPPDATA%\PagePilot\history.sqlite3`; trên macOS/Linux, mặc định là `~/.local/share/PagePilot/history.sqlite3` hoặc thư mục theo `XDG_DATA_HOME`. Ứng dụng in đường dẫn đang dùng khi khởi động. Cơ sở dữ liệu chứa nội dung, kết quả công việc và bản thống kê cuối, vì vậy vẫn có thể chứa thông tin riêng của bạn dù không chứa token hoặc URL yêu cầu API. Có thể xuất kết quả công việc và thống kê ra CSV trong giao diện. Media được lưu tạm phục vụ phiên tải lên, không được dùng làm kho media lâu dài.
 
 Kết nối mạng cần thiết: `graph.facebook.com` để gọi Graph API và kiểm tra trạng thái; `graph-video.facebook.com` để tải video thường; `rupload.facebook.com` để tải Reels; `pypi.org` và `files.pythonhosted.org` khi cài thư viện. Kết nối HTTPS giữ xác minh chứng chỉ TLS.
 
@@ -132,6 +159,8 @@ Trên macOS/Linux:
 
 Các kiểm thử sử dụng phản hồi API giả lập, không đăng bài thật lên Meta. Luồng Graph API được đối chiếu với mã mẫu/SDK chính thức của Meta; chưa được xác nhận bằng User Access Token và Page thật của bạn trong môi trường này. Hãy kiểm tra một Page với nội dung do bạn chọn trước khi áp dụng cho toàn bộ danh sách.
 
+Schema SDK xác nhận endpoint Insights, các kỳ báo cáo và trường `followers_count`; schema không chứng minh một tên metric Page vẫn hoạt động trên máy chủ Meta hiện hành. Tính khả dụng của các metric thống kê chỉ được biết khi đọc API bằng token của bạn.
+
 Bản này phục vụ Facebook Pages: văn bản, ảnh, video và Reels, với đăng ngay hoặc gửi lịch lên Meta. Bình luận là của Fanpage và cần ứng dụng hoạt động; chưa có máy chủ riêng chạy bình luận 24/7. Chưa tích hợp Instagram, tài khoản cá nhân, Facebook Groups, tự đăng nhập OAuth hoặc đóng gói bộ cài Windows. Không cần App Secret để chạy luồng nhập token hiện tại.
 
 ## Tài liệu Meta tham khảo
@@ -140,6 +169,7 @@ Bản này phục vụ Facebook Pages: văn bản, ảnh, video và Reels, với
 - [Pages API — Posts](https://developers.facebook.com/docs/pages-api/posts/)
 - [Page Feed](https://developers.facebook.com/docs/graph-api/reference/page/feed/)
 - [Page Photos](https://developers.facebook.com/docs/graph-api/reference/page/photos/)
+- [Page Insights](https://developers.facebook.com/docs/graph-api/reference/page/insights/)
 - [Video publishing](https://developers.facebook.com/docs/video-api/guides/publishing/)
 - [Facebook Reels publishing](https://developers.facebook.com/docs/video-api/guides/reels-publishing/)
 - [Mã mẫu Reels chính thức của Meta](https://github.com/fbsamples/reels_publishing_apis)

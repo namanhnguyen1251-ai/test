@@ -7,8 +7,9 @@
   const finalStates = new Set(['published', 'scheduled', 'processing', 'failed', 'uncertain', 'cancelled']);
   const stateLabels = {queued: 'Trong hàng đợi', running: 'Đang đăng', published: 'Đã đăng', scheduled: 'Meta đã nhận lịch', processing: 'Meta đang xử lý', failed: 'Thất bại', uncertain: 'Cần kiểm tra', cancelled: 'Đã hủy'};
   const stateClasses = {queued: 'neutral', running: 'running', published: 'success', scheduled: 'connected', processing: 'processing', failed: 'error', uncertain: 'processing', cancelled: 'neutral'};
-  const state = {csrf: '', connected: false, demo: false, graphVersion: '', pages: [], selected: new Set(), media: [], pickedMedia: new Set(), previews: new Map(), kind: 'text', composerId: crypto.randomUUID(), job: null, viewJob: null, history: [], plans: [], drafts: [], editingId: null, uploading: false, busy: false, pending: null, pendingBatch: false, reviewIdentity: null, uncertainSubmission: null, pendingPosts: null, pollError: false};
+  const state = {csrf: '', connected: false, demo: false, graphVersion: '', sessionRevision: null, pages: [], selected: new Set(), media: [], pickedMedia: new Set(), previews: new Map(), kind: 'text', composerId: crypto.randomUUID(), job: null, viewJob: null, history: [], plans: [], drafts: [], editingId: null, uploading: false, busy: false, pending: null, pendingBatch: false, reviewIdentity: null, uncertainSubmission: null, pendingPosts: null, pollError: false};
   let toastTimer;
+  let lastDispatchedSessionRevision = null;
   const commentLabels = {waiting_post: 'Chờ bài được đăng', waiting_delay: 'Chờ đến giờ bình luận', waiting_connection: 'Chờ kết nối Fanpage', sending: 'Đang gửi bình luận', commented: 'Đã bình luận', failed: 'Lỗi bình luận', uncertain: 'Cần kiểm tra bình luận', cancelled: 'Đã hủy bình luận'};
   const pendingComments = new Set(['waiting_post', 'waiting_delay', 'waiting_connection']);
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'giờ trên máy tính';
@@ -273,6 +274,10 @@
   }
 
   function renderSession() {
+    if (state.sessionRevision !== null && state.sessionRevision !== lastDispatchedSessionRevision) {
+      lastDispatchedSessionRevision = state.sessionRevision;
+      window.dispatchEvent(new CustomEvent('pagepilot:session', {detail: {connected: state.connected, demo: state.demo, revision: state.sessionRevision, pages: state.pages.map(page => ({id: page.id, name: page.name}))}}));
+    }
     const badge = $('sessionBadge');
     badge.textContent = state.demo ? 'DÙNG THỬ' : state.connected ? 'Đã kết nối' : 'Chưa kết nối';
     badge.className = 'badge ' + (state.demo ? 'demo' : state.connected ? 'connected' : 'neutral');
@@ -542,7 +547,7 @@
   async function bootstrap() {
     const data = await request('/api/bootstrap');
     state.csrf = data.csrf_token; state.connected = !!data.connected; state.demo = !!data.demo;
-    state.graphVersion = data.graph_version || ''; state.pages = data.pages || []; state.media = data.media || []; state.job = data.job || null; state.history = data.history || [];
+    state.graphVersion = data.graph_version || ''; state.sessionRevision = data.session_revision ?? 0; state.pages = data.pages || []; state.media = data.media || []; state.job = data.job || null; state.history = data.history || [];
     state.selected = new Set([...state.selected].filter(id => state.pages.some(page => page.id === id && publishable(page))));
     state.pickedMedia = new Set([...state.pickedMedia].filter(id => state.media.some(media => media.id === id)));
     renderSession(); renderJob(); renderHistory(); refreshPlans();

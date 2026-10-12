@@ -7,6 +7,7 @@
   <title>PagePilot · Quản lý đăng bài Fanpage</title>
   <link rel="stylesheet" href="/app.css?v=1">
   <script src="/app.js?v=1" defer></script>
+  <script src="/analytics.js?v=1" defer></script>
 </head>
 <body>
   <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -27,6 +28,13 @@
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7V5Z"/></symbol>
     <symbol id="i-page" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M8 15v-4m4 4V7m4 8v-6"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M5.5 8a7 7 0 0 1 11.6-3L20 8M4 16l2.9 3A7 7 0 0 0 18.5 16"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-comment" viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H4l1.5-4A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 9h8M8 12h5"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m1 3a5 5 0 0 1 4 5v1"/></symbol>
+    <symbol id="i-user-plus" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M19 7v6m-3-3h6"/></symbol>
+    <symbol id="i-sort" viewBox="0 0 24 24"><path d="m8 9 4-4 4 4M8 15l4 4 4-4"/></symbol>
   </svg>
 
   <header class="app-header">
@@ -52,7 +60,12 @@
     <div id="uncertainNotice" class="notice notice-error" hidden><p>Chưa xác định được phản hồi lượt gửi trước. Kiểm tra hoặc khôi phục đúng lượt đó trước khi tạo lượt mới.</p><button id="recoverSubmissionButton" class="button button-ghost button-small">Kiểm tra & tiếp tục lượt gửi trước</button></div>
     <div id="globalError" class="notice notice-error" role="alert" hidden></div>
 
-    <div class="workspace-grid">
+    <nav class="workspace-tabs" role="tablist" aria-label="Chức năng PagePilot">
+      <button id="postingTab" class="workspace-tab" type="button" role="tab" aria-selected="true" aria-controls="postingPanel" tabindex="0"><svg aria-hidden="true"><use href="#i-page"/></svg>Đăng bài & lịch</button>
+      <button id="analyticsTab" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="analyticsPanel" tabindex="-1"><svg aria-hidden="true"><use href="#i-chart"/></svg>Thống kê Fanpage</button>
+    </nav>
+
+    <div id="postingPanel" class="workspace-grid" role="tabpanel" aria-labelledby="postingTab">
       <section class="panel pages-panel" aria-labelledby="pagesHeading">
         <div class="panel-heading"><div class="heading-icon"><svg><use href="#i-stack"/></svg><h2 id="pagesHeading">Fanpage của bạn</h2></div><span id="pageCount" class="number-pill">0</span></div>
         <label class="search-box"><svg><use href="#i-search"/></svg><input id="pageSearch" type="search" placeholder="Tìm tên hoặc ID trang…" aria-label="Tìm Fanpage"></label>
@@ -97,6 +110,54 @@
 
       <section id="jobPanel" class="panel job-panel" aria-labelledby="jobHeading" hidden><div class="panel-heading"><div class="heading-icon"><svg><use href="#i-clock"/></svg><h2 id="jobHeading">Tiến trình đăng bài</h2><span id="jobStateBadge" class="badge neutral"></span></div><div class="job-actions"><button id="currentJobButton" class="button button-ghost button-small" hidden>Tiến trình hiện tại</button><button id="exportButton" class="button button-ghost button-small"><svg><use href="#i-download"/></svg>Xuất CSV</button><button id="stopButton" class="button button-danger button-small" hidden>Dừng hàng đợi</button></div></div><div class="job-body"><div class="job-summary" role="status" aria-live="polite" aria-atomic="true"><strong id="jobProgressText">0 / 0 trang</strong><span id="jobSummaryText"></span></div><div class="progress-track" role="progressbar" id="jobProgress" aria-label="Tiến độ đăng bài" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="jobProgressFill"></div></div><p id="jobNote" class="field-help"></p><div class="result-table-wrap"><table class="result-table"><thead><tr><th>Fanpage / bài</th><th>Giờ hẹn</th><th>Trạng thái</th><th>Bình luận</th><th>Chi tiết</th></tr></thead><tbody id="jobResults"></tbody></table></div></div></section>
     </div>
+
+    <section id="analyticsPanel" class="analytics-panel" role="tabpanel" aria-labelledby="analyticsTab" hidden>
+      <div class="analytics-heading">
+        <div class="analytics-heading-copy"><div class="eyebrow">META PAGE INSIGHTS</div><h2>Hiệu quả của các Fanpage</h2><p>Tổng hợp toàn bộ Fanpage trong phiên, kể cả trang chưa chọn để đăng bài.</p></div>
+        <div class="analytics-session"><span id="analyticsModeBadge" class="badge neutral">Chưa kết nối</span><span id="analyticsUpdated">Chưa cập nhật</span></div>
+      </div>
+
+      <div class="analytics-controls">
+        <label class="analytics-period" for="analyticsPreset"><span class="field-label">Kỳ báo cáo</span><select id="analyticsPreset" aria-describedby="analyticsPeriodHint"><option value="30days" selected>30 ngày gần nhất</option><option value="7days">7 ngày gần nhất</option><option value="today">Hôm nay</option></select></label>
+        <div class="analytics-control-actions"><button id="analyticsRefresh" class="button button-primary" type="button" disabled><svg aria-hidden="true"><use href="#i-refresh"/></svg>Tải thống kê</button><button id="analyticsStop" class="button button-danger" type="button" hidden>Dừng tải</button><button id="analyticsExport" class="button button-ghost" type="button" disabled><svg aria-hidden="true"><use href="#i-download"/></svg>Xuất CSV</button></div>
+        <p id="analyticsPeriodHint" class="analytics-period-hint">Insights dùng kỳ theo ngày hoặc khoảng ngày có sẵn của Meta. Báo cáo có thể cập nhật chậm; người theo dõi hiện tại không thay đổi khi đổi kỳ.</p>
+      </div>
+
+      <div id="analyticsNotice" class="analytics-notice">Kết nối Meta App hoặc dùng thử để xem thống kê. Mỗi chỉ số hiển thị số trang có dữ liệu; dữ liệu thiếu không được tính thành 0.</div>
+      <div id="analyticsError" class="notice notice-error" role="alert" hidden></div>
+
+      <div class="analytics-cards">
+        <article class="analytics-card" data-analytics-card="views" aria-labelledby="analyticsViewsLabel">
+          <div class="analytics-card-heading"><span class="analytics-metric-icon"><svg aria-hidden="true"><use href="#i-eye"/></svg></span><span class="analytics-card-status neutral" data-analytics-status="views">Chưa tải</span></div>
+          <h3 id="analyticsViewsLabel">Lượt xem nội dung</h3><strong class="analytics-card-value" data-analytics-value="views">—</strong><p class="analytics-card-note">Trong kỳ báo cáo, theo chỉ số Meta cung cấp.</p>
+          <div class="analytics-card-footer"><span>Trang có dữ liệu</span><span class="analytics-coverage" data-analytics-coverage="views" title="Chưa có dữ liệu hoặc nguồn chỉ số">0/0</span></div>
+        </article>
+        <article class="analytics-card" data-analytics-card="engagements" aria-labelledby="analyticsEngagementsLabel">
+          <div class="analytics-card-heading"><span class="analytics-metric-icon"><svg aria-hidden="true"><use href="#i-comment"/></svg></span><span class="analytics-card-status neutral" data-analytics-status="engagements">Chưa tải</span></div>
+          <h3 id="analyticsEngagementsLabel">Tương tác bài viết</h3><strong class="analytics-card-value" data-analytics-value="engagements">—</strong><p class="analytics-card-note">Tương tác được Meta ghi nhận trong kỳ.</p>
+          <div class="analytics-card-footer"><span>Trang có dữ liệu</span><span class="analytics-coverage" data-analytics-coverage="engagements" title="Chưa có dữ liệu hoặc nguồn chỉ số">0/0</span></div>
+        </article>
+        <article class="analytics-card" data-analytics-card="followers" aria-labelledby="analyticsFollowersLabel">
+          <div class="analytics-card-heading"><span class="analytics-metric-icon"><svg aria-hidden="true"><use href="#i-users"/></svg></span><span class="analytics-card-status neutral" data-analytics-status="followers">Chưa tải</span></div>
+          <h3 id="analyticsFollowersLabel">Người theo dõi hiện tại</h3><strong class="analytics-card-value" data-analytics-value="followers">—</strong><p class="analytics-card-note">Số hiện tại, không phụ thuộc kỳ báo cáo.</p>
+          <div class="analytics-card-footer"><span>Trang có dữ liệu</span><span class="analytics-coverage" data-analytics-coverage="followers" title="Chưa có dữ liệu hoặc nguồn chỉ số">0/0</span></div>
+        </article>
+        <article class="analytics-card" data-analytics-card="new_followers" aria-labelledby="analyticsNewFollowersLabel">
+          <div class="analytics-card-heading"><span class="analytics-metric-icon"><svg aria-hidden="true"><use href="#i-user-plus"/></svg></span><span class="analytics-card-status neutral" data-analytics-status="new_followers">Chưa tải</span></div>
+          <h3 id="analyticsNewFollowersLabel">Theo dõi mới (trong kỳ)</h3><strong class="analytics-card-value" data-analytics-value="new_followers">—</strong><p class="analytics-card-note">Lượt theo dõi mới, không trừ lượt bỏ theo dõi.</p>
+          <div class="analytics-card-footer"><span>Trang có dữ liệu</span><span class="analytics-coverage" data-analytics-coverage="new_followers" title="Chưa có dữ liệu hoặc nguồn chỉ số">0/0</span></div>
+        </article>
+      </div>
+
+      <section class="panel analytics-results" aria-labelledby="analyticsTableHeading">
+        <div class="analytics-results-heading"><div><h3 id="analyticsTableHeading">Chi tiết từng Fanpage</h3><p>Nhấn tên cột để sắp xếp. Số tổng ở trên luôn tính tất cả trang.</p></div><label class="search-box analytics-search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="analyticsSearch" type="search" placeholder="Tìm tên hoặc ID Fanpage…" aria-label="Tìm Fanpage trong bảng thống kê"></label></div>
+        <div class="analytics-progress-heading"><span id="analyticsProgressText" role="status" aria-live="polite" aria-atomic="true">Chưa có lượt tải thống kê.</span><span id="analyticsRowCount">0 Fanpage</span></div>
+        <div id="analyticsProgress" class="progress-track analytics-progress" role="progressbar" aria-label="Tiến độ tải thống kê" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="analyticsProgressFill"></div></div>
+        <div class="analytics-table-wrap" tabindex="0" role="region" aria-label="Bảng thống kê Fanpage, cuộn ngang để xem đầy đủ"><table id="analyticsTable" class="analytics-table"><caption class="visually-hidden">Các chỉ số và trạng thái dữ liệu của từng Fanpage trong kỳ báo cáo đã chọn.</caption><thead><tr><th scope="col" aria-sort="none"><button type="button" data-analytics-sort="page_name">Fanpage<svg aria-hidden="true"><use href="#i-sort"/></svg></button></th><th scope="col" aria-sort="none"><button type="button" data-analytics-sort="views">Lượt xem<svg aria-hidden="true"><use href="#i-sort"/></svg></button></th><th scope="col" aria-sort="none"><button type="button" data-analytics-sort="engagements">Tương tác<svg aria-hidden="true"><use href="#i-sort"/></svg></button></th><th scope="col" aria-sort="none"><button type="button" data-analytics-sort="followers">Theo dõi hiện tại<svg aria-hidden="true"><use href="#i-sort"/></svg></button></th><th scope="col" aria-sort="none"><button type="button" data-analytics-sort="new_followers">Theo dõi mới<svg aria-hidden="true"><use href="#i-sort"/></svg></button></th><th scope="col">Trạng thái / chi tiết</th></tr></thead><tbody id="analyticsRows"><tr><td class="analytics-empty" colspan="6"><span class="analytics-empty-icon"><svg aria-hidden="true"><use href="#i-chart"/></svg></span><strong>Thống kê sẽ xuất hiện ở đây</strong><p>Kết nối tài khoản hoặc dùng thử, sau đó chọn kỳ và tải thống kê.</p></td></tr></tbody></table></div>
+      </section>
+
+      <div class="analytics-footnotes"><svg aria-hidden="true"><use href="#i-shield"/></svg><div><strong>Quyền đọc thống kê trên Meta</strong><p>Token cần <code>read_insights</code>, <code>pages_read_engagement</code> và quyền <code>ANALYZE</code> trên Fanpage. Chỉ số không được Meta hỗ trợ hoặc thiếu quyền sẽ có trạng thái riêng và chi tiết nguồn; hãy xem chi tiết từng trang nếu tổng chỉ có một phần dữ liệu.</p></div></div>
+    </section>
     <footer class="workspace-footer"><span>PagePilot <span class="footer-divider">/</span> Công cụ đăng bài qua Meta Graph API</span><span id="connectionDetail">Chưa kết nối</span></footer>
   </main>
 
