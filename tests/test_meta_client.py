@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import requests
@@ -417,6 +418,251 @@ class MetaClientTests(unittest.TestCase):
         client = GraphClient(self.USER_TOKEN, "v24.0")
         self.addCleanup(client.close)
         self.assertEqual(client.session.get_adapter(client.base_url).max_retries.total, 0)
+
+    def test_page_comment_writes_once_with_page_identity_and_safe_result(self):
+        client = self.client(Response({"id": "999_888", "access_token": "page-secret"}))
+        result = client.comment(self.PAGE, "123_999", "Cảm ơn bạn!")
+        self.assertEqual(result, {"id": "999_888", "status": "published"})
+        self.assertEqual(len(self.session.calls), 1)
+        call = self.session.calls[0]
+        self.assertEqual(call["method"], "POST")
+        self.assertEqual(call["url"], self.BASE + "/123_999/comments")
+        self.assertEqual(call["headers"]["Authorization"], "Bearer page-secret")
+        self.assertEqual(call["data"], {"message": "Cảm ơn bạn!"})
+        self.assert_secure_calls()
+
+    def test_comment_video_numeric_object_id_uses_same_comments_edge(self):
+        client = self.client(Response({"id": "700_888"}))
+        self.assertEqual(client.comment(self.PAGE, "700", "Video mới")["status"], "published")
+        self.assertEqual(self.session.calls[0]["url"], self.BASE + "/700/comments")
+
+    def test_comment_checks_full_object_id_before_request(self):
+        for post_id in ["123_999/comments", "../123", "123_", "123_999?access_token=page-secret", "https://evil.example", "", None, True]:
+            with self.subTest(post_id=post_id):
+                client = self.client()
+                with self.assertRaises(GraphError):
+                    client.comment(self.PAGE, post_id, "Hello")
+                self.assertEqual(self.session.calls, [])
+
+    def test_comment_checks_nonempty_text_and_eight_thousand_character_limit(self):
+        for message in ["", " \n\t", "x" * 8001, None, 123]:
+            with self.subTest(message_length=len(message) if isinstance(message, str) else None):
+                client = self.client()
+                with self.assertRaises(GraphError):
+                    client.comment(self.PAGE, "123_999", message)
+                self.assertEqual(self.session.calls, [])
+        client = self.client(Response({"id": "999_888"}))
+        self.assertEqual(client.comment(self.PAGE, "123_999", "x" * 8000)["status"], "published")
+
+    def test_comment_timeout_is_uncertain_safe_and_not_retried(self):
+        client = self.client(requests.Timeout("user-secret page-secret"))
+        with self.assertRaises(GraphError) as caught:
+            client.comment(self.PAGE, "123_999", "Hello")
+        self.assertTrue(caught.exception.uncertain)
+        self.assertNotIn("user-secret", str(caught.exception))
+        self.assertNotIn("page-secret", str(caught.exception))
+        self.assertEqual(len(self.session.calls), 1)
+
+    def test_comment_permission_failure_does_not_retry_or_leak_meta_message(self):
+        client = self.client(Response({"error": {"code": 200, "message": "page-secret missing pages_manage_engagement"}}, 403))
+        with self.assertRaises(GraphError) as caught:
+            client.comment(self.PAGE, "123_999", "Hello")
+        self.assertEqual(caught.exception.code, 200)
+        self.assertFalse(caught.exception.uncertain)
+        self.assertNotIn("page-secret", str(caught.exception))
+        self.assertEqual(len(self.session.calls), 1)
+
+    def test_comment_missing_acknowledged_id_is_uncertain(self):
+        client = self.client(Response({"success": True}))
+        with self.assertRaises(GraphError) as caught:
+            client.comment(self.PAGE, "123_999", "Hello")
+        self.assertTrue(caught.exception.uncertain)
+        self.assertIn("bình luận", str(caught.exception))
+
+    def test_check_publication_video_makes_one_get_and_requires_confirmation(self):
+        client = self.client(Response({"published": False, "status": {"video_status": "ready"}}))
+        result = client.check_publication(self.PAGE, "700", "video")
+        self.assertEqual(result, {"id": "700", "status": "processing"})
+        self.assertEqual(len(self.session.calls), 1)
+        self.assertEqual(self.session.calls[0]["method"], "GET")
+        self.assertEqual(self.session.calls[0]["params"], {"fields": "status,published,permalink_url,scheduled_publish_time"})
+        self.assert_secure_calls()
+
+    def test_check_publication_video_accepts_explicit_published_flag(self):
+        client = self.client(Response({"published": True, "status": {"video_status": "ready"}}))
+        result = client.check_publication(self.PAGE, "700", "video")
+        self.assertEqual(result["status"], "published")
+        self.assertEqual(result["id"], "700")
+        self.assertEqual(len(self.session.calls), 1)
+
+    def test_check_publication_reel_ignores_ready_and_published_flag(self):
+        client = self.client(Response({"published": True, "status": {"video_status": "ready", "publishing_phase": {"status": "in_progress"}}}))
+        result = client.check_publication(self.PAGE, "800", "reel")
+        self.assertEqual(result["status"], "processing")
+        self.assertEqual(self.session.calls[0]["params"], {"fields": "status,scheduled_publish_time"})
+        self.assertEqual(len(self.session.calls), 1)
+
+    def test_check_publication_reel_accepts_complete_publishing_phase(self):
+        client = self.client(Response({"status": {"publishing_phase": {"status": "complete"}}}))
+        result = client.check_publication(self.PAGE, "800", "reel")
+        self.assertEqual(result["status"], "published")
+        self.assertEqual(len(self.session.calls), 1)
+
+    def test_check_publication_explicit_processing_failure_is_failed_and_safe(self):
+        client = self.client(Response({"status": {"processing_phase": {"status": "failed", "errors": [{"message": "page-secret user-secret"}]}}}))
+        result = client.check_publication(self.PAGE, "800", "reel")
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("error", result)
+        self.assertNotIn("page-secret", result["error"])
+        self.assertNotIn("user-secret", result["error"])
+        self.assertEqual(len(self.session.calls), 1)
+
+    def test_check_publication_read_timeout_stays_processing_and_never_writes(self):
+        client = self.client(requests.Timeout("page-secret"))
+        result = client.check_publication(self.PAGE, "800", "reel")
+        self.assertEqual(result["status"], "processing")
+        self.assertNotIn("page-secret", result["error"])
+        self.assertEqual([call["method"] for call in self.session.calls], ["GET"])
+
+    def test_check_publication_read_permission_failure_does_not_claim_post_failed(self):
+        client = self.client(Response({"error": {"code": 190, "message": "user-secret page-secret"}}, 403))
+        result = client.check_publication(self.PAGE, "800", "reel")
+        self.assertEqual(result["status"], "processing")
+        self.assertNotIn("page-secret", result["error"])
+        self.assertEqual(len(self.session.calls), 1)
+
+    def test_check_publication_feed_posts_read_actual_is_published_flag(self):
+        client = self.client(Response({"is_published": True}), Response({"is_published": True}))
+        for kind in ("text", "photos"):
+            with self.subTest(kind=kind):
+                self.assertEqual(client.check_publication(self.PAGE, "123_999", kind)["status"], "published")
+        self.assertEqual(len(self.session.calls), 2)
+        for call in self.session.calls:
+            self.assertEqual(call["method"], "GET")
+            self.assertEqual(call["params"], {"fields": "is_published,permalink_url,scheduled_publish_time"})
+
+    def test_check_publication_rejects_invalid_id_kind_and_page_auth(self):
+        client = self.client()
+        for post_id in ["../800", "800/status", "800?token=secret"]:
+            with self.subTest(post_id=post_id), self.assertRaises(GraphError):
+                client.check_publication(self.PAGE, post_id, "reel")
+        with self.assertRaises(GraphError):
+            client.check_publication(self.PAGE, "800", "unsupported")
+        for page in [None, {}, dict(self.PAGE, access_token=""), dict(self.PAGE, access_token="bad\r\nsecret")]:
+            with self.subTest(page=page), self.assertRaises(GraphError):
+                client.check_publication(page, "800", "reel")
+        self.assertEqual(self.session.calls, [])
+
+    def test_native_text_schedule_is_acknowledged_without_claiming_published(self):
+        scheduled_at = 2_000_000_000
+        client = self.client(Response({"id": "123_999"}))
+        result = client.publish(self.PAGE, "text", "Bài hẹn giờ", [], scheduled_at=scheduled_at)
+        self.assertEqual(result, {"id": "123_999", "status": "scheduled", "scheduled_at": scheduled_at})
+        self.assertEqual(self.session.calls[0]["data"], {"message": "Bài hẹn giờ", "published": "false", "scheduled_publish_time": scheduled_at})
+        self.assertEqual(len(self.session.calls), 1)
+        self.assert_secure_calls()
+
+    def test_native_photo_schedule_sets_schedule_only_on_final_feed_post(self):
+        client = self.client(Response({"id": "501"}), Response({"id": "123_999"}))
+        result = client.publish(self.PAGE, "photos", "Bài ảnh hẹn giờ", [self.photo], scheduled_at=2_000_000_000)
+        self.assertEqual(result["status"], "scheduled")
+        self.assertEqual(len(self.session.calls), 2)
+        self.assertIn(b'name="published"\r\n\r\nfalse', self.session.calls[0]["body"])
+        self.assertNotIn(b"scheduled_publish_time", self.session.calls[0]["body"])
+        final = self.session.calls[1]["data"]
+        self.assertEqual(final["published"], "false")
+        self.assertEqual(final["scheduled_publish_time"], 2_000_000_000)
+        self.assertEqual(json.loads(final["attached_media"]), [{"media_fbid": "501"}])
+
+    def test_native_video_schedule_streams_once_and_does_not_poll_for_publication(self):
+        client = self.client(Response({"id": "700"}))
+        result = client.publish(self.PAGE, "video", "Video hẹn giờ", [self.video], "Tiêu đề", scheduled_at=2_000_000_000)
+        self.assertEqual(result, {"id": "700", "status": "scheduled", "scheduled_at": 2_000_000_000})
+        self.assertEqual(len(self.session.calls), 1)
+        call = self.session.calls[0]
+        self.assertEqual(call["url"], "https://graph-video.facebook.com/v24.0/123/videos")
+        self.assertIn(b'name="published"\r\n\r\nfalse', call["body"])
+        self.assertIn(b'name="scheduled_publish_time"\r\n\r\n2000000000', call["body"])
+        self.assert_secure_calls()
+
+    def test_native_reel_schedule_finishes_scheduled_and_does_not_poll_for_publication(self):
+        client = self.client(
+            Response({"video_id": "800"}), Response({"success": True}),
+            Response({"status": {"uploading_phase": {"status": "complete"}}}),
+            Response({"success": True}),
+        )
+        result = client.publish(self.PAGE, "reel", "Reel hẹn giờ", [self.video], "Tiêu đề", scheduled_at=2_000_000_000)
+        self.assertEqual(result, {"id": "800", "status": "scheduled", "scheduled_at": 2_000_000_000})
+        self.assertEqual([call["method"] for call in self.session.calls], ["POST", "POST", "GET", "POST"])
+        fields = self.session.calls[3]["data"]
+        self.assertEqual(fields["upload_phase"], "finish")
+        self.assertEqual(fields["video_state"], "SCHEDULED")
+        self.assertEqual(fields["scheduled_publish_time"], 2_000_000_000)
+        self.assert_secure_calls()
+
+    def test_native_reel_schedule_requires_positive_finish_acknowledgement(self):
+        client = self.client(
+            Response({"video_id": "800"}), Response({"success": True}),
+            Response({"status": {"uploading_phase": {"status": "complete"}}}),
+            Response({"success": False}),
+        )
+        with self.assertRaises(GraphError) as caught:
+            client.publish(self.PAGE, "reel", "", [self.video], scheduled_at=2_000_000_000)
+        self.assertTrue(caught.exception.uncertain)
+        self.assertEqual(len(self.session.calls), 4)
+
+    def test_native_schedule_rejects_invalid_epoch_before_any_write(self):
+        for scheduled_at in [True, False, 0, -1, "2000000000", 2_000_000_000.0, {}]:
+            with self.subTest(scheduled_at=scheduled_at):
+                client = self.client()
+                with self.assertRaises(GraphError):
+                    client.publish(self.PAGE, "text", "Hello", [], scheduled_at=scheduled_at)
+                self.assertEqual(self.session.calls, [])
+
+    def test_native_schedule_missing_post_id_is_uncertain(self):
+        client = self.client(Response({"success": True}))
+        with self.assertRaises(GraphError) as caught:
+            client.publish(self.PAGE, "text", "Hello", [], scheduled_at=2_000_000_000)
+        self.assertTrue(caught.exception.uncertain)
+
+    def test_check_scheduled_feed_reads_meta_timestamp_without_assuming_publication(self):
+        client = self.client(Response({"is_published": False, "scheduled_publish_time": 2_000_000_000}))
+        with patch("meta_client.time.time", return_value=1_900_000_000):
+            result = client.check_publication(self.PAGE, "123_999", "text")
+        self.assertEqual(result, {"id": "123_999", "status": "scheduled", "scheduled_at": 2_000_000_000})
+        self.assertEqual(len(self.session.calls), 1)
+        self.assertEqual(self.session.calls[0]["method"], "GET")
+
+    def test_check_due_schedule_does_not_infer_published_from_clock(self):
+        client = self.client(Response({"is_published": False, "scheduled_publish_time": 2_000_000_000}))
+        with patch("meta_client.time.time", return_value=2_000_000_001):
+            result = client.check_publication(self.PAGE, "123_999", "photos")
+        self.assertEqual(result["status"], "processing")
+        self.assertNotIn("permalink_url", result)
+
+    def test_check_scheduled_video_and_reel_need_explicit_publication_confirmation(self):
+        for kind, payload in [
+            ("video", {"published": False, "scheduled_publish_time": "2000000000", "status": {"video_status": "ready"}}),
+            ("reel", {"scheduled_publish_time": "2033-05-18T03:33:20+0000", "status": {"video_status": "ready", "publishing_phase": {"status": "not_started"}}}),
+        ]:
+            with self.subTest(kind=kind):
+                client = self.client(Response(payload))
+                with patch("meta_client.time.time", return_value=1_900_000_000):
+                    result = client.check_publication(self.PAGE, "800", kind)
+                self.assertEqual(result, {"id": "800", "status": "scheduled", "scheduled_at": 2_000_000_000})
+                self.assertEqual([call["method"] for call in self.session.calls], ["GET"])
+
+    def test_check_published_flag_takes_precedence_over_old_schedule_metadata(self):
+        client = self.client(Response({"is_published": True, "scheduled_publish_time": 2_000_000_000}))
+        with patch("meta_client.time.time", return_value=1_900_000_000):
+            self.assertEqual(client.check_publication(self.PAGE, "123_999", "text")["status"], "published")
+
+    def test_check_invalid_meta_schedule_metadata_stays_processing_without_leak(self):
+        for timestamp in [True, "page-secret", "9" * 5000, "2033-05-18T03:33:20", "invalid"]:
+            with self.subTest(timestamp_type=type(timestamp).__name__):
+                client = self.client(Response({"is_published": False, "scheduled_publish_time": timestamp}))
+                result = client.check_publication(self.PAGE, "123_999", "text")
+                self.assertEqual(result, {"id": "123_999", "status": "processing"})
 
 
 if __name__ == "__main__":

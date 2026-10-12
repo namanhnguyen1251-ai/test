@@ -10,6 +10,7 @@ import json
 import re
 import time
 from contextlib import ExitStack
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
@@ -129,19 +130,20 @@ class GraphClient:
         message: str,
         media: list[dict[str, Any]],
         title: str = "",
+        scheduled_at: int | None = None,
     ) -> dict[str, Any]:
-        page_id = self._id(page.get("id"))
-        page_token = page.get("access_token")
-        if not isinstance(page_token, str) or not page_token.strip() or "\r" in page_token or "\n" in page_token:
-            raise GraphError("Fanpage thiếu Page Access Token hợp lệ; hãy kết nối lại tài khoản.")
-        self._known_tokens.add(page_token)
+        page_id, page_token = self._page_auth(page)
+        scheduled_at = self._schedule_time(scheduled_at)
         if not isinstance(message, str) or not isinstance(title, str) or not isinstance(media, list):
             raise GraphError("Nội dung bài đăng không hợp lệ.")
         if kind == "text":
             if not message.strip() or media:
                 raise GraphError("Bài văn bản cần nội dung và không kèm tệp phương tiện.")
-            payload = self._request("POST", f"{page_id}/feed", page_token, data={"message": message}, may_publish=True)
-            return self._result(self._published_id(payload), "published", payload)
+            fields = {"message": message}
+            if scheduled_at is not None:
+                fields.update(published="false", scheduled_publish_time=scheduled_at)
+            payload = self._request("POST", f"{page_id}/feed", page_token, data=fields, may_publish=True)
+            return self._publish_result(self._published_id(payload), scheduled_at, payload)
         if kind == "photos":
             if not 1 <= len(media) <= 10:
                 raise GraphError("Bài ảnh cần từ 1 đến 10 ảnh.")
@@ -153,12 +155,15 @@ class GraphClient:
                     {"published": "false"}, may_publish=False,
                 )
                 attached_media.append({"media_fbid": self._id(payload.get("id"))})
+            fields = {"message": message, "attached_media": json.dumps(attached_media, separators=(",", ":"))}
+            if scheduled_at is not None:
+                fields.update(published="false", scheduled_publish_time=scheduled_at)
             payload = self._request(
                 "POST", f"{page_id}/feed", page_token,
-                data={"message": message, "attached_media": json.dumps(attached_media, separators=(",", ":"))},
+                data=fields,
                 may_publish=True,
             )
-            return self._result(self._published_id(payload), "published", payload)
+            return self._publish_result(self._published_id(payload), scheduled_at, payload)
         if kind not in ("video", "reel"):
             raise GraphError("Loại bài đăng phải là text, photos, video hoặc reel.")
         if len(media) != 1:
@@ -166,15 +171,58 @@ class GraphClient:
         file_info = self._media_file(media[0], "video/")
         if kind == "video":
             fields = {"description": message, "title": title, "published": "true"}
+            if scheduled_at is not None:
+                fields.update(published="false", scheduled_publish_time=str(scheduled_at))
             payload = self._multipart(
                 f"{page_id}/videos", page_token, file_info, fields, may_publish=True,
                 url=f"https://{self.VIDEO_HOST}/{self.graph_version}/{page_id}/videos",
             )
             video_id = self._published_id(payload)
+            if scheduled_at is not None:
+                return self._publish_result(video_id, scheduled_at, payload)
             return self._poll_published(video_id, page_token, kind, self._clock() + self.processing_timeout)
-        return self._publish_reel(page_id, page_token, message, title, file_info)
+        return self._publish_reel(page_id, page_token, message, title, file_info, scheduled_at)
 
-    def _publish_reel(self, page_id: str, token: str, message: str, title: str, file_info: tuple[Path, str, str]) -> dict[str, Any]:
+    def comment(self, page: dict[str, Any], post_id: str, message: str) -> dict[str, Any]:
+        """Write one Page-authored comment; never retry an ambiguous write."""
+        _, token = self._page_auth(page)
+        object_id = self._id(post_id)
+        if not isinstance(message, str) or not message.strip() or len(message) > 8000:
+            raise GraphError("Bình luận cần nội dung từ 1 đến 8.000 ký tự.")
+        payload = self._request(
+            "POST", f"{object_id}/comments", token,
+            data={"message": message}, may_publish=True,
+        )
+        try:
+            comment_id = self._id(payload.get("id"))
+        except GraphError:
+            raise GraphError("Meta chưa trả về mã bình luận hợp lệ. Meta có thể đã nhận bình luận; kiểm tra bài đăng trước khi thử lại.", uncertain=True) from None
+        return {"id": comment_id, "status": "published"}
+
+    def check_publication(self, page: dict[str, Any], post_id: str, kind: str) -> dict[str, Any]:
+        """Check one acknowledged post with at most one read-only request.
+
+        An acknowledged scheduled feed post still needs Meta's is_published
+        confirmation. A failed status read says nothing about publication, so it remains
+        processing with a safe error that callers can show before checking again.
+        """
+        _, token = self._page_auth(page)
+        object_id = self._id(post_id)
+        if kind not in ("text", "photos", "video", "reel"):
+            raise GraphError("Loại bài đăng phải là text, photos, video hoặc reel.")
+        try:
+            if kind in ("text", "photos"):
+                payload = self._request(
+                    "GET", object_id, token,
+                    params={"fields": "is_published,permalink_url,scheduled_publish_time"}, timeout=(5, 10),
+                )
+            else:
+                payload = self._video_status(object_id, token, kind, self._clock() + 10)
+        except GraphError as exc:
+            return {"id": object_id, "status": "processing", "error": str(exc)}
+        return self._publication_result(object_id, kind, payload)
+
+    def _publish_reel(self, page_id: str, token: str, message: str, title: str, file_info: tuple[Path, str, str], scheduled_at: int | None = None) -> dict[str, Any]:
         payload = self._request("POST", f"{page_id}/video_reels", token, data={"upload_phase": "start"})
         video_id = self._id(payload.get("video_id"))
         # Older official samples construct this URL from the returned video ID.
@@ -190,13 +238,18 @@ class GraphClient:
             raise GraphError("Meta chưa xác nhận nhận đủ tệp Reel; chưa gửi lệnh đăng.")
         deadline = self._clock() + self.processing_timeout
         self._wait_upload(video_id, token, min(deadline, self._clock() + 15))
+        fields = {"upload_phase": "finish", "video_id": video_id, "video_state": "PUBLISHED", "description": message, "title": title}
+        if scheduled_at is not None:
+            fields.update(video_state="SCHEDULED", scheduled_publish_time=scheduled_at)
         finished = self._request(
             "POST", f"{page_id}/video_reels", token,
-            data={"upload_phase": "finish", "video_id": video_id, "video_state": "PUBLISHED", "description": message, "title": title},
+            data=fields,
             may_publish=True,
         )
         if finished.get("success") is not True:
             raise GraphError("Meta chưa xác nhận lệnh đăng Reel. Kiểm tra Fanpage trước khi thử lại.", uncertain=True)
+        if scheduled_at is not None:
+            return self._publish_result(video_id, scheduled_at)
         return self._poll_published(video_id, token, "reel", deadline)
 
     def _wait_upload(self, video_id: str, token: str, deadline: float) -> None:
@@ -223,19 +276,84 @@ class GraphClient:
                 # The publish command already returned an object ID. Do not turn
                 # a status-read failure into a retry of the publishing command.
                 return self._result(video_id, "processing")
-            status = self._status(payload)
-            self._raise_video_failure(status)
-            publishing = status.get("publishing_phase", {})
-            complete = isinstance(publishing, dict) and publishing.get("status") == "complete"
-            if complete or (kind == "video" and payload.get("published") is True):
-                return self._result(video_id, "published", payload)
+            result = self._publication_result(video_id, kind, payload)
+            if result["status"] == "failed":
+                raise GraphError(result["error"])
+            if result["status"] == "published":
+                return result
             if self._clock() >= deadline:
-                return self._result(video_id, "processing", payload)
+                return result
             self._sleep(min(self.poll_interval, max(0, deadline - self._clock())))
         return self._result(video_id, "processing")
 
+    def _publication_result(self, object_id: str, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
+        status = self._status(payload)
+        try:
+            self._raise_video_failure(status)
+        except GraphError as exc:
+            return {"id": object_id, "status": "failed", "error": str(exc)}
+        publishing = status.get("publishing_phase", {})
+        complete = isinstance(publishing, dict) and publishing.get("status") == "complete"
+        if kind in ("text", "photos"):
+            is_published = payload.get("is_published") is True
+        else:
+            is_published = complete or (kind == "video" and payload.get("published") is True)
+        if is_published:
+            return self._result(object_id, "published", payload)
+        scheduled_at = self._read_schedule_time(payload.get("scheduled_publish_time"))
+        if scheduled_at is not None and scheduled_at > time.time():
+            result = self._result(object_id, "scheduled", payload)
+            result["scheduled_at"] = scheduled_at
+            return result
+        return self._result(object_id, "processing", payload)
+
+    def _publish_result(self, object_id: str, scheduled_at: int | None, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        result = self._result(object_id, "scheduled" if scheduled_at is not None else "published", payload)
+        if scheduled_at is not None:
+            result["scheduled_at"] = scheduled_at
+        return result
+
+    @staticmethod
+    def _schedule_time(value: Any) -> int | None:
+        # The app enforces its documented time window. Meta remains the authority
+        # for permission, format, and account-specific scheduling restrictions.
+        if value is None:
+            return None
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise GraphError("Thời điểm hẹn giờ phải là số giây Unix dương.")
+        return value
+
+    @staticmethod
+    def _read_schedule_time(value: Any) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value if value > 0 else None
+        if not isinstance(value, str):
+            return None
+        if len(value) <= 20 and value.isascii() and value.isdigit():
+            return int(value) if int(value) > 0 else None
+        try:
+            scheduled = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if scheduled.tzinfo is not None:
+                timestamp = int(scheduled.timestamp())
+                return timestamp if timestamp > 0 else None
+        except (ValueError, OverflowError, OSError):
+            pass
+        return None
+
+    def _page_auth(self, page: Any) -> tuple[str, str]:
+        if not isinstance(page, dict):
+            raise GraphError("Fanpage không hợp lệ.")
+        page_id = self._id(page.get("id"))
+        token = page.get("access_token")
+        if not isinstance(token, str) or not token.strip() or "\r" in token or "\n" in token:
+            raise GraphError("Fanpage thiếu Page Access Token hợp lệ; hãy kết nối lại tài khoản.")
+        self._known_tokens.add(token)
+        return page_id, token
+
     def _video_status(self, video_id: str, token: str, kind: str, deadline: float) -> dict[str, Any]:
-        fields = "status" if kind == "reel" else "status,published,permalink_url"
+        fields = "status,scheduled_publish_time" if kind == "reel" else "status,published,permalink_url,scheduled_publish_time"
         remaining = max(1, deadline - self._clock())
         return self._request("GET", video_id, token, params={"fields": fields}, timeout=(min(5, remaining), min(10, remaining)))
 

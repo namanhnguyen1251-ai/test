@@ -7,6 +7,8 @@
 - Lấy danh sách Page qua `/me/accounts`, đọc tiếp các trang kết quả để không bỏ sót danh sách khoảng 50 Fanpage.
 - Tìm kiếm, chọn một hoặc nhiều Page, xem lại nội dung và danh sách đích trước khi đăng.
 - Đăng văn bản; bài có ảnh JPEG/PNG; video MP4; Facebook Reels từ file MP4 trên máy.
+- Chuẩn bị nhiều bài riêng biệt và gửi lịch đăng lên Meta; Meta xử lý lịch đã nhận dù máy tính của bạn tắt.
+- Tùy chọn bình luận dưới bài bằng chính Fanpage sau khi xác nhận bài đã xuất bản; tính năng bình luận cần ứng dụng đang chạy.
 - Xử lý lần lượt, theo dõi kết quả riêng cho từng Page và dừng các mục chưa bắt đầu.
 - Chế độ demo có 50 Page giả để thử giao diện, không gửi bài lên Meta.
 - Lưu lịch sử công việc trên máy; token chỉ nằm trong bộ nhớ trong thời gian ứng dụng chạy.
@@ -60,6 +62,7 @@ Những quyền cần kiểm tra cho quy trình đăng Page:
 - `pages_show_list`: lấy danh sách Page mà người dùng đã cấp quyền cho app.
 - `pages_read_engagement`: đọc dữ liệu Page cần cho các thao tác Page API.
 - `pages_manage_posts`: tạo bài đăng trên Page.
+- `pages_manage_engagement`: tạo bình luận bằng Fanpage, nếu bật tính năng bình luận sau đăng.
 
 Người dùng phải có quyền tạo nội dung tương ứng trên từng Page trong Facebook/Business Portfolio. Kiểm tra cả quyền được cấp cho người dùng, Page được chọn khi cấp quyền app và các task mà `/me/accounts` trả về, chẳng hạn `CREATE_CONTENT` hoặc quyền quản lý phù hợp theo mô hình Page hiện tại. Chỉ có tên Page xuất hiện trong một danh sách quản lý Business chưa đủ để chứng minh được phép đăng.
 
@@ -75,9 +78,33 @@ Token có thể hết hạn hoặc bị thu hồi. Khi gặp lỗi quyền hoặ
 4. Kiểm tra lại bản xem trước và danh sách Page trong bước xác nhận, rồi bắt đầu.
 5. Theo dõi từng kết quả. Với video/Reels, Meta xử lý bất đồng bộ; nhận được video ID hoặc phản hồi nhận yêu cầu chưa đồng nghĩa video đã hiển thị thành công.
 
+### Hẹn giờ khi máy tính tắt
+
+Soạn từng bài rồi thêm vào danh sách kế hoạch. Mỗi bài giữ nội dung, tệp đính kèm, danh sách Page, thời gian và tùy chọn bình luận riêng; sửa bộ soạn sau đó không thay đổi những bài đã thêm. Kiểm tra toàn bộ kế hoạch trong bước xác nhận, rồi gửi lịch. PagePilot tải nội dung lên Meta ngay khi bạn gửi; thời gian hẹn là lúc Meta xuất bản bài. Bạn vẫn có thể chọn đăng ngay.
+
+**Chỉ tắt máy sau khi quá trình tải lên và gửi lịch của tất cả bài/Page đã hoàn tất.** Bài có trạng thái đã được Meta nhận lịch được Meta xử lý về sau, không cần PagePilot tiếp tục chạy. Các mục còn chờ trên máy, lỗi hoặc chưa rõ kết quả chưa có bảo đảm này. Kiểm tra lịch trong Meta Business Suite, nhất là lần đầu dùng.
+
+Lịch đăng được gửi qua tham số lập lịch chính thức: văn bản và bài nhiều ảnh dùng `published=false` cùng `scheduled_publish_time`; video thường dùng cùng các tham số đó; Reels dùng `video_state=SCHEDULED` cùng `scheduled_publish_time` ở bước hoàn tất. Việc nhận lịch không cam kết bài sẽ xuất bản thành công nếu Meta phát hiện lỗi media, quyền hoặc nội dung về sau.
+
+Giao diện hiển thị theo múi giờ máy/trình duyệt; máy đặt Bangkok dùng UTC+7. Đọc kỹ múi giờ và thời gian trước khi xác nhận. Thời gian gửi lên Meta là UNIX timestamp nên giữ đúng thời điểm qua các múi giờ.
+
+Tool giới hạn lịch thật trong khoảng **20 phút đến 28 ngày** tính từ lúc gửi, để có khoảng đệm tải nội dung lên nhiều Page. Đây là chính sách của PagePilot, không phải tuyên bố giới hạn chung của mọi API Meta. Việc chấp nhận lịch còn phụ thuộc API version, loại bài và quy định hiện hành của Meta. Nếu Meta từ chối lịch, tool giữ kết quả lỗi để bạn kiểm tra; không đổi sang đăng ngay. Demo cho phép lịch từ 5 giây để thử quy trình và không gọi Meta.
+
+### Bình luận bằng Fanpage
+
+Bình luận dùng Page Access Token nên tác giả là chính Fanpage, không phải tài khoản cá nhân. Công cụ chỉ bình luận sau khi kiểm tra bài đã xuất bản; thời gian hẹn đến hoặc video có ID chưa đủ để xác nhận điều này.
+
+Bạn có thể đặt khoảng chờ bình luận từ **0 đến 3.600 giây**. Khoảng chờ tính từ khi PagePilot quan sát được xác nhận bài đã xuất bản, không tính từ lúc gửi lịch. Tool kiểm tra trạng thái khoảng 5 giây/lượt; mạng, thời gian xử lý video và số bài đang theo dõi có thể làm bình luận xuất hiện muộn hơn.
+
+Meta không nhận một lịch bình luận riêng trong quy trình này. Vì vậy, **tự bình luận cần PagePilot đang chạy và có token hợp lệ**. Nếu tắt máy, bài đã được Meta nhận lịch vẫn có thể xuất bản, còn bình luận chờ bạn mở lại ứng dụng và kết nối lại đúng tài khoản. Thiếu token chỉ tạm dừng theo dõi/bình luận trên máy, không ngăn Meta xuất bản lịch đã nhận. Nội dung bình luận, Page ID và post/video ID được lưu cục bộ; token vẫn chỉ giữ trong RAM.
+
+Lỗi bình luận được hiển thị riêng theo Page. Tool không tự gửi lại bình luận lỗi hoặc chưa rõ kết quả, nhằm tránh tạo bình luận trùng; việc đọc trạng thái có thể được kiểm tra lại.
+
+### Tệp đính kèm và hàng đợi
+
 Giới hạn file **do tool đặt**: tối đa 10 ảnh JPEG/PNG, mỗi ảnh không quá 20 MB; một video MP4 không quá 1 GB. Đây không phải cam kết về giới hạn hoặc yêu cầu media hiện hành của Meta. Meta vẫn kiểm tra định dạng, thời lượng, tỷ lệ khung hình, quyền và nội dung. Cần dùng media đáp ứng yêu cầu trong tài liệu Meta cho API version của app.
 
-Nút dừng ngăn các mục tiếp theo bắt đầu; yêu cầu đang gửi có thể vẫn hoàn tất. Không thể ngắt kết nối token khi công việc còn chạy. Giữ ứng dụng và mạng hoạt động cho tới khi hàng đợi kết thúc.
+Nút dừng ngăn các mục tiếp theo bắt đầu; yêu cầu đang gửi có thể vẫn hoàn tất. Không thể ngắt kết nối token khi công việc còn chạy. Giữ ứng dụng và mạng hoạt động cho tới khi hàng đợi gửi bài/gửi lịch kết thúc. Dừng hàng đợi hoặc thoát ứng dụng không hủy những lịch Meta đã nhận; kiểm tra và quản lý các lịch đó trong Meta Business Suite. Sau khi khởi động lại, các mục chưa được gửi trước lúc thoát không được tự động gửi; các lịch đã có ID Meta vẫn được giữ để theo dõi.
 
 Ứng dụng không tự thử lại các yêu cầu đăng, vì lỗi mạng sau khi gửi có thể xảy ra dù Meta đã nhận bài. Nếu kết quả không rõ, kiểm tra trực tiếp trên Page và bằng ID trả về trước khi chọn đăng lại; việc gửi lại có thể tạo bài trùng. Nếu tải nhiều ảnh thành công nhưng tạo bài cuối cùng thất bại, ảnh chưa xuất bản có thể còn trên Meta.
 
@@ -105,7 +132,7 @@ Trên macOS/Linux:
 
 Các kiểm thử sử dụng phản hồi API giả lập, không đăng bài thật lên Meta. Luồng Graph API được đối chiếu với mã mẫu/SDK chính thức của Meta; chưa được xác nhận bằng User Access Token và Page thật của bạn trong môi trường này. Hãy kiểm tra một Page với nội dung do bạn chọn trước khi áp dụng cho toàn bộ danh sách.
 
-Bản này phục vụ Facebook Pages: văn bản, ảnh, video và Reels. Chưa tích hợp Instagram, tài khoản cá nhân, Facebook Groups, tự đăng nhập OAuth, lịch đăng trong tương lai hoặc đóng gói bộ cài Windows. Không cần App Secret để chạy luồng nhập token hiện tại.
+Bản này phục vụ Facebook Pages: văn bản, ảnh, video và Reels, với đăng ngay hoặc gửi lịch lên Meta. Bình luận là của Fanpage và cần ứng dụng hoạt động; chưa có máy chủ riêng chạy bình luận 24/7. Chưa tích hợp Instagram, tài khoản cá nhân, Facebook Groups, tự đăng nhập OAuth hoặc đóng gói bộ cài Windows. Không cần App Secret để chạy luồng nhập token hiện tại.
 
 ## Tài liệu Meta tham khảo
 
