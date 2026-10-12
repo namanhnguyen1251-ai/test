@@ -179,9 +179,7 @@ class GraphClient:
         video_id = self._id(payload.get("video_id"))
         # Older official samples construct this URL from the returned video ID.
         upload_url = payload.get("upload_url", f"https://{self.UPLOAD_HOST}/video-upload/{self.graph_version}/{video_id}")
-        upload_parts = self._trusted_url(upload_url, self.UPLOAD_HOST)
-        if upload_parts.query or upload_parts.path != f"/video-upload/{self.graph_version}/{video_id}":
-            raise GraphError("Địa chỉ tải Reel chứa tham số ngoài giao thức dự kiến; đã dừng để bảo vệ token.")
+        self._trusted_reel_upload_url(upload_url, video_id)
         path, _, _ = file_info
         with path.open("rb") as source:
             uploaded = self._request(
@@ -331,6 +329,10 @@ class GraphClient:
     def _trusted_url(cls, url: Any, host: str):
         if not isinstance(url, str):
             raise GraphError("Địa chỉ tải hoặc phân trang Meta không hợp lệ.")
+        # urlsplit silently removes some controls. Reject the original spelling
+        # before parsing; keep opaque signed query strings otherwise unchanged.
+        if any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in url) or "\\" in url or "#" in url:
+            raise GraphError("Địa chỉ tải hoặc phân trang Meta không hợp lệ.")
         try:
             parts = urlsplit(url)
             valid = parts.scheme == "https" and parts.netloc == host and not parts.fragment
@@ -339,6 +341,16 @@ class GraphClient:
         if not valid:
             raise GraphError("Địa chỉ tải hoặc phân trang không thuộc máy chủ Meta cho phép; đã dừng để bảo vệ token.")
         return parts
+
+    @classmethod
+    def _trusted_reel_upload_url(cls, url: Any, video_id: str) -> None:
+        parts = cls._trusted_url(url, cls.UPLOAD_HOST)
+        # The upload service can return a version different from the Graph
+        # start request. Treat its query as opaque (possibly signed), while
+        # binding the upload path to the video ID from that same response.
+        path_pattern = rf"/video-upload/(?:v[1-9][0-9]*\.[0-9]+/)?{re.escape(video_id)}/?"
+        if not re.fullmatch(path_pattern, parts.path):
+            raise GraphError("Đường dẫn tải Reel không khớp video Meta đã tạo; chưa tải video lên.")
 
     @classmethod
     def _id(cls, value: Any) -> str:

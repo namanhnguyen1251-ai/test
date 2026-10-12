@@ -239,12 +239,82 @@ class MetaClientTests(unittest.TestCase):
         )
         self.assertEqual(client.publish(self.PAGE, "reel", "", [self.video])["status"], "processing")
 
+    def test_reel_upload_service_version_can_differ_from_graph_version(self):
+        upload_url = "https://rupload.facebook.com/video-upload/v19.0/800"
+        client = self.client(
+            Response({"video_id": "800", "upload_url": upload_url}),
+            Response({"success": True}),
+            Response({"status": {"uploading_phase": {"status": "complete"}}}),
+            Response({"success": True}),
+            Response({"status": {"publishing_phase": {"status": "complete"}}}),
+        )
+        result = client.publish(self.PAGE, "reel", "", [self.video])
+        self.assertEqual(result["status"], "published")
+        self.assertEqual(self.session.calls[1]["url"], upload_url)
+        self.assertEqual(self.session.calls[0]["url"], self.BASE + "/123/video_reels")
+        self.assertEqual(self.session.calls[3]["url"], self.BASE + "/123/video_reels")
+        self.assert_secure_calls()
+
+    def test_reel_provider_query_and_unversioned_path_are_preserved(self):
+        queries = "?sig=opaque-upload-signature&hash=abc%2Fdef%2Bghi%3D&expires=1234567890"
+        urls = [
+            "https://rupload.facebook.com/video-upload/v24.0/800" + queries,
+            "https://rupload.facebook.com/video-upload/v19.0/800" + queries,
+            "https://rupload.facebook.com/video-upload/800" + queries,
+            "https://rupload.facebook.com/video-upload/v19.0/800/" + queries,
+        ]
+        for upload_url in urls:
+            with self.subTest(upload_url=upload_url):
+                client = self.client(
+                    Response({"video_id": "800", "upload_url": upload_url}),
+                    Response({"success": True}),
+                    Response({"status": {"uploading_phase": {"status": "complete"}}}),
+                    Response({"success": True}),
+                    Response({"status": {"publishing_phase": {"status": "complete"}}}),
+                )
+                result = client.publish(self.PAGE, "reel", "", [self.video])
+                self.assertEqual(self.session.calls[1]["url"], upload_url)
+                self.assertIsNone(self.session.calls[1]["params"])
+                self.assertEqual(result["status"], "published")
+                self.assertNotIn("opaque-upload-signature", json.dumps(result))
+                self.assert_secure_calls()
+
+    def test_reel_provider_query_does_not_leak_from_upload_error(self):
+        upload_url = "https://rupload.facebook.com/video-upload/v19.0/800?sig=opaque-upload-signature"
+        client = self.client(Response({"video_id": "800", "upload_url": upload_url}), requests.Timeout(upload_url + " page-secret"))
+        with self.assertRaises(GraphError) as caught:
+            client.publish(self.PAGE, "reel", "", [self.video])
+        self.assertFalse(caught.exception.uncertain)
+        self.assertNotIn("opaque-upload-signature", str(caught.exception))
+        self.assertNotIn("page-secret", str(caught.exception))
+        self.assertEqual(len(self.session.calls), 2)
+
+    def test_reel_upload_redirect_is_not_followed(self):
+        upload_url = "https://rupload.facebook.com/video-upload/v19.0/800?sig=opaque-upload-signature"
+        client = self.client(Response({"video_id": "800", "upload_url": upload_url}), Response({}, status_code=302))
+        with self.assertRaises(GraphError):
+            client.publish(self.PAGE, "reel", "", [self.video])
+        self.assertEqual(len(self.session.calls), 2)
+        self.assert_secure_calls()
+
     def test_reel_rejects_untrusted_upload_url_before_sending_file_or_token(self):
         urls = [
             "https://attacker.example/upload", "http://rupload.facebook.com/upload",
             "https://rupload.facebook.com.attacker.example/upload",
             "https://rupload.facebook.com:443/upload", "https://rupload.facebook.com/upload?access_token=page-secret",
-            "https://rupload.facebook.com/video-upload/v23.0/800", "https://rupload.facebook.com/video-upload/v24.0/other",
+            "https://rupload.facebook.com/video-upload/v24.0/other",
+            "https://rupload.facebook.com/video-upload/v24.0/801?sig=opaque-upload-signature",
+            "https://rupload.facebook.com/video-upload/v24.0/800?sig=x#fragment",
+            "https://rupload.facebook.com/video-upload/v24.0/800#",
+            "https://rupload.facebook.com/video-upload/v24.0/800/extra",
+            "https://rupload.facebook.com/video-upload/v24.0/800/../801",
+            "https://user:password@rupload.facebook.com/video-upload/v24.0/800",
+            "https://rupload.facebook.com\\@attacker.example/video-upload/v24.0/800",
+            "https://rupload.face\nbook.com/video-upload/v24.0/800",
+            "\x00https://rupload.facebook.com/video-upload/v24.0/800",
+            " https://rupload.facebook.com/video-upload/v24.0/800",
+            "https://rupload.facebook.com/video-upload/v24.0/800?sig=x\r\n",
+            "https://rupload.facebook.com/video-upload/v24.0/800?sig=x\x7f",
         ]
         for url in urls:
             with self.subTest(url=url):

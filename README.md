@@ -43,6 +43,12 @@ python3 -m venv .venv
 
 Các thư viện được ghim trong `requirements.txt`: `requests==2.32.5` và `requests-toolbelt==1.0.0`. Video được gửi theo luồng để tránh đọc toàn bộ video lớn vào RAM.
 
+### Cập nhật khi gặp lỗi URL tải Reel
+
+Bản cập nhật sửa lỗi kiểm tra URL tải Reel quá chặt: phiên bản dịch vụ upload có thể khác phiên bản Graph API gửi lệnh start. Tool giữ nguyên tham số URL do Meta trả về và chỉ tải lên HTTPS của `rupload.facebook.com`, với đường dẫn khớp mã video. URL tải không xuất hiện trong giao diện hoặc lịch sử.
+
+Đóng tool bằng `Ctrl+C`, tải gói ZIP mới từ nhánh `pagepilot-download`, giải nén vào thư mục mới rồi chạy `start_windows.bat`. Kết nối lại bằng token và phiên bản Graph API bạn đang dùng; thử một Fanpage trước khi chạy hàng loạt. Những mục gặp đúng lỗi kiểm tra URL trên đã bị chặn trước bước upload và finish.
+
 ## Kết nối Meta App của bạn
 
 Ứng dụng dùng **User Access Token từ Meta App của bạn** để lấy Page Access Token tương ứng. Bản này chưa tích hợp luồng Facebook Login; bạn nhập token đã có vào giao diện cục bộ. Không nhập App Secret vào ô token và không gửi token trong chat, issue hoặc ảnh chụp màn hình.
