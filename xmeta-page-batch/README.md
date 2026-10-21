@@ -4,15 +4,17 @@ Thư mục này thêm màn hình tạo Facebook Page theo lô vào **bản ZIP g
 
 ## Tạo bản tiện ích chạy được
 
-1. Giải nén ZIP bản vá. Đặt `ToolFB_1.9.9.zip` gốc cạnh `build_from_original.py`, hoặc nhớ đường dẫn đến ZIP gốc.
-2. Cài Python 3.10 trở lên. Trong thư mục này chạy:
+**Thư mục vừa giải nén bản vá chưa phải tiện ích Chrome và không có `manifest.json`.** Hãy tạo bản đầy đủ trước, sau đó chỉ chọn thư mục trong `dist` khi cài vào Chrome.
+
+1. Giải nén ZIP bản vá. Giữ `ToolFB_1.9.9.zip` gốc trong thư mục Downloads hoặc đặt cạnh `build_windows.cmd`.
+2. Trên Windows, cài Python 3.10 trở lên rồi nhấp đúp `build_windows.cmd`. Cửa sổ sẽ báo vị trí tiện ích đã tạo. Nếu muốn chạy bằng lệnh, trong thư mục bản vá dùng:
 
    ```bash
    python build_from_original.py ToolFB_1.9.9.zip
    ```
 
-   Trên Windows, có thể dùng `py -3 build_from_original.py ToolFB_1.9.9.zip`.
-3. Mở `chrome://extensions`, bật **Chế độ dành cho nhà phát triển**, chọn **Tải tiện ích đã giải nén**, rồi chọn `dist/XMETA_PageBatch_1.9.9`.
+   Có thể thay `python` bằng `py -3` trên Windows. Nếu ZIP gốc nằm ở nơi khác, thay đối số bằng đường dẫn đầy đủ tới ZIP đó.
+3. Mở `chrome://extensions`, bật **Chế độ dành cho nhà phát triển**, chọn **Tải tiện ích đã giải nén**, rồi chọn **`dist/XMETA_PageBatch_1.9.9`**. Tệp `manifest.json` nằm trong thư mục này.
 4. Mở **Chi tiết → Tùy chọn tiện ích** để vào màn hình tạo Page. Bản ZIP để lưu/di chuyển cũng nằm trong `dist`.
 
 Script kiểm tra SHA-256 của ZIP gốc để tránh vá nhầm một bản khác. Nếu chạy lại, hãy đổi tên thư mục và ZIP cũ trong `dist` trước; script không tự xóa dữ liệu.

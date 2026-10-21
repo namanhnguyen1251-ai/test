@@ -1,0 +1,13 @@
+HUONG DAN CAI DAT TREN WINDOWS
+
+Thu muc vua giai nen khong phai tien ich Chrome. Thu muc nay chua co manifest.json.
+
+1. Dat ToolFB_1.9.9.zip goc vao thu muc Downloads, hoac canh build_windows.cmd.
+2. Cai Python 3.10 tro len neu may chua co.
+3. Nhap dup build_windows.cmd va doi den khi hien "Extension is ready".
+4. Vao chrome://extensions, bat che do danh cho nha phat trien, chon
+   "Tai tien ich da giai nen" va chon thu muc:
+   dist\XMETA_PageBatch_1.9.9
+
+Chi thu muc trong dist moi co manifest.json. Neu ban da tung chay script,
+hay doi ten thu muc dist cu truoc khi chay lai.
