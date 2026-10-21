@@ -4,7 +4,7 @@ Thư mục này thêm màn hình tạo Facebook Page theo lô vào **bản ZIP g
 
 ## Tạo bản tiện ích chạy được
 
-1. Tải thư mục này từ kho GitHub. Đặt `ToolFB_1.9.9.zip` gốc cạnh `build_from_original.py`, hoặc nhớ đường dẫn đến ZIP gốc.
+1. Giải nén ZIP bản vá. Đặt `ToolFB_1.9.9.zip` gốc cạnh `build_from_original.py`, hoặc nhớ đường dẫn đến ZIP gốc.
 2. Cài Python 3.10 trở lên. Trong thư mục này chạy:
 
    ```bash
