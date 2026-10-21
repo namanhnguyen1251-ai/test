@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>XMETA.VN · Tạo Page theo lô</title>
+  <link rel="stylesheet" href="page-batch.css">
+  <script src="page-batch.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <div class="eyebrow">XMETA.VN · Công cụ trong tiện ích Chrome</div>
+      <h1>Tạo Page theo lô</h1>
+      <p>Nhập danh sách, kiểm tra từng Page rồi gửi tuần tự qua Meta Graph API. Các chức năng XMETA hiện có vẫn mở bằng biểu tượng tiện ích.</p>
+    </header>
+
+    <section class="notice" aria-label="Điều kiện sử dụng">
+      <strong>Điều kiện Meta:</strong> API tạo Page chỉ dùng được với tài khoản thử nghiệm hoặc ứng dụng được Meta cho phép, cùng User access token có quyền <code>pages_manage_metadata</code> và <code>pages_show_list</code>. Công cụ dừng khi Meta từ chối quyền hoặc cảnh báo lạm dụng. Không có tốc độ nào bảo đảm tránh giới hạn hay bộ lọc spam.
+    </section>
+
+    <section class="card" aria-labelledby="input-title">
+      <h2 id="input-title">1. Danh sách Page</h2>
+      <p>CSV cần cột <code>name</code>, <code>category_enum</code>; cột <code>about</code> có thể bỏ trống. <code>category_enum</code> là giá trị <code>api_enum</code> của <a href="https://developers.facebook.com/docs/graph-api/reference/page-category/" target="_blank" rel="noopener noreferrer">Meta Page Category</a>.</p>
+      <div class="field">
+        <label for="csvFile">Chọn tệp CSV UTF-8</label>
+        <input id="csvFile" type="file" accept=".csv,text/csv,text/plain">
+      </div>
+      <div class="field">
+        <label for="csvText">Hoặc dán CSV</label>
+        <textarea id="csvText" rows="7" spellcheck="false" placeholder="name,category_enum,about&#10;Tên Page,PERSONAL_BLOG,Mô tả Page"></textarea>
+      </div>
+      <button id="loadBtn" type="button">Nạp và kiểm tra danh sách</button>
+    </section>
+
+    <section class="card" aria-labelledby="settings-title">
+      <h2 id="settings-title">2. Kết nối Meta</h2>
+      <div class="grid">
+        <div class="field wide">
+          <label for="token">User access token</label>
+          <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Chỉ giữ trong bộ nhớ trang này">
+          <small>Token không được lưu vào Chrome Storage hoặc tệp kết quả. Trang này xóa ô token sau khi dừng hoặc hoàn tất.</small>
+        </div>
+        <div class="field">
+          <label for="version">Graph API version</label>
+          <input id="version" type="text" value="v26.0" pattern="v?[0-9]+\.[0-9]+" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="delay">Khoảng nghỉ tối thiểu giữa các Page (giây)</label>
+          <input id="delay" type="number" value="30" min="5" max="3600" step="1">
+        </div>
+      </div>
+      <p class="muted">Mỗi yêu cầu gửi riêng lẻ. Khi Meta báo giới hạn, công cụ đọc <code>Retry-After</code> và mức sử dụng API để chờ lâu hơn. Nếu mất kết nối trong lúc tạo Page, kết quả được đánh dấu “chưa rõ” để bạn kiểm tra trước khi chạy lại.</p>
+      <div class="actions">
+        <button id="startBtn" type="button" disabled>Bắt đầu tạo Page</button>
+        <button id="pauseBtn" type="button" class="secondary" disabled>Tạm dừng</button>
+        <button id="cancelBtn" type="button" class="secondary" disabled>Dừng</button>
+        <button id="exportBtn" type="button" class="secondary" disabled>Xuất kết quả CSV</button>
+      </div>
+      <p id="message" class="message" role="status" aria-live="polite">Chưa có danh sách.</p>
+    </section>
+
+    <section class="card" aria-labelledby="results-title">
+      <div class="results-head">
+        <div>
+          <h2 id="results-title">3. Kết quả</h2>
+          <p id="summary" class="muted">0 Page</p>
+        </div>
+        <div class="pagination">
+          <button id="prevBtn" type="button" class="secondary" disabled>Trước</button>
+          <span id="pageLabel">Trang 0/0</span>
+          <button id="nextBtn" type="button" class="secondary" disabled>Sau</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Dòng</th><th>Tên Page</th><th>Category enum</th><th>Trạng thái</th><th>Page ID</th><th>Chi tiết</th></tr></thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
